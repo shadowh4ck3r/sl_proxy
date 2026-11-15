@@ -6,16 +6,17 @@
 #   APP_ICON_URL      source image for the app icon
 #   IN_APP_LOGO_URL   source image for the in-app logo
 #   ICON_BACKGROUND   hex colour placed behind transparent icon pixels (default 0F1014)
-#   ICON_INSET        fraction of the icon canvas the artwork may occupy (default 0.84)
+#   ICON_INSET        fraction of the icon canvas the artwork may occupy (default 1.0: the icon
+#                     artwork is a full-bleed square, so it fills the whole canvas)
 #   FORCE_ASSETS=1    regenerate even if the files already exist
 #
 # Download failures are non-fatal: the app falls back to the SL_Proxy wordmark.
 set -uo pipefail
 
-APP_ICON_URL="${APP_ICON_URL:-https://sailorsloot.xyz/wp-content/uploads/2026/07/cropped-cropped-Untitled-design.png}"
+APP_ICON_URL="${APP_ICON_URL:-https://sailorsloot.xyz/wp-content/uploads/2026/11/4DEDB0B3-C5C8-4E16-A185-7ECECF16517A.jpg}"
 IN_APP_LOGO_URL="${IN_APP_LOGO_URL:-https://sailorsloot.xyz/wp-content/uploads/2026/07/cropped-Untitled-design-4.png}"
 ICON_BACKGROUND="${ICON_BACKGROUND:-0F1014}"
-ICON_INSET="${ICON_INSET:-0.84}"
+ICON_INSET="${ICON_INSET:-1.0}"
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ASSETS="$REPO_ROOT/SL_Proxy/Assets.xcassets"

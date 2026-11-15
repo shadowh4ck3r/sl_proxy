@@ -14,6 +14,8 @@ struct HomeView: View {
     @EnvironmentObject private var nodes: NodeStore
     @EnvironmentObject private var settings: SettingsStore
     @State private var showNodePicker = false
+    @StateObject private var exitIP = ExitIPStore()
+    @StateObject private var banners = BannerStore()
 
     private static let layoutAnimation = Animation.spring(response: 0.4, dampingFraction: 0.8)
 
@@ -27,6 +29,9 @@ struct HomeView: View {
                 Brand.background
                 ScrollView {
                     VStack(spacing: 18) {
+                        if !banners.banners.isEmpty {
+                            BannerAdCard(banners: banners.banners, style: style)
+                        }
                         connectCard
                         LocalProxyCard(endpoint: tunnel.proxyEndpoint,
                                        isRunning: tunnel.isConnected,
@@ -36,14 +41,6 @@ struct HomeView: View {
                         }
                         CellularCard(verifier: tunnel.verifier, budget: tunnel.budget, style: style)
                         nodeCard
-                        if let node = nodes.activeNode {
-                            TestConnectionButton(
-                                config: node.shareURL ?? (nodes.previewConfig(settings: settings.value) ?? ""),
-                                scheme: node.kind.rawValue
-                            )
-                            .frame(maxWidth: .infinity)
-                            .navigationStyleCard(style, cornerRadius: 18)
-                        }
                         modeCard
                         TrafficCard(traffic: tunnel.traffic)
                         if let error = tunnel.lastError {
@@ -67,6 +64,16 @@ struct HomeView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showNodePicker) { NodePickerSheet() }
+            .task { await banners.refresh() }
+            // Flag and masked exit IP of the running connection; cleared on disconnect.
+            .task(id: "\(tunnel.isConnected)-\(nodes.activeNodeID?.uuidString ?? "")") {
+                if tunnel.isConnected {
+                    try? await Task.sleep(for: .seconds(2))
+                    await exitIP.refresh(endpoint: tunnel.proxyEndpoint)
+                } else {
+                    exitIP.clear()
+                }
+            }
         }
     }
 
@@ -77,6 +84,7 @@ struct HomeView: View {
     private var connectRing: some View {
         ConnectRing(
             size: buttonSize,
+            style: style,
             isConnected: tunnel.isConnected,
             isTransitioning: tunnel.isTransitioning
         ) {
@@ -108,6 +116,13 @@ struct HomeView: View {
 
             Text(tunnel.statusText)
                 .font(.title3.weight(.semibold))
+
+            if tunnel.isConnected, let info = exitIP.info {
+                Text("\(info.flag) \(info.maskedIP)")
+                    .font(.footnote.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Exit \(info.country)")
+            }
 
             if tunnel.backgroundKeepAliveActive {
                 Label("Keeps running in background", systemImage: "waveform")
@@ -145,7 +160,7 @@ struct HomeView: View {
                         Text(node.name).font(.headline).lineLimit(1)
                         HStack(spacing: 6) {
                             KindBadge(kind: node.kind)
-                            Text(node.displayServer)
+                            Text(node.displayServer.masked)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
@@ -207,6 +222,8 @@ struct HomeView: View {
 /// Connection Button Size chosen in Appearance Settings.
 struct ConnectRing: View {
     var size: ConnectionButtonSize = .medium
+    /// Erosion draws the vintage wooden switch, Katzy the glass ring.
+    var style: NavigationStyle = .katzy
     let isConnected: Bool
     let isTransitioning: Bool
     let action: () -> Void
@@ -225,7 +242,16 @@ struct ConnectRing: View {
         isConnected ? 0.45 : 0.12
     }
 
+    @ViewBuilder
     var body: some View {
+        if style.usesGlassmorphism {
+            ringBody
+        } else {
+            VintageConnectSwitch(height: diameter, isOn: isConnected, isBusy: isTransitioning, action: action)
+        }
+    }
+
+    private var ringBody: some View {
         Button(action: action) {
             ZStack {
                 Circle()
@@ -323,6 +349,7 @@ struct FloatingConnectButton: View {
         VStack(alignment: .leading, spacing: 8) {
             ConnectRing(
                 size: settings.value.connectionButtonSize,
+                style: settings.value.navigationStyle,
                 isConnected: tunnel.isConnected,
                 isTransitioning: tunnel.isTransitioning
             ) {

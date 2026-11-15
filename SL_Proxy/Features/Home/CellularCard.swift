@@ -10,8 +10,17 @@ struct CellularCard: View {
     let style: NavigationStyle
 
     @State private var detection = CarrierDetector.detect()
+    /// Seconds since 1970 when a loopback cellular connection was first seen (profile verified);
+    /// 0 = never. Kept across launches, so the install buttons stay dismissed while the engine is
+    /// stopped. "Reinstall" clears it.
+    @AppStorage("profileVerifiedAt") private var verifiedAt: Double = 0
+    /// Seconds since 1970 when the install button was last tapped (profile downloaded); 0 = never.
+    @AppStorage("profileRequestedAt") private var requestedAt: Double = 0
 
     private var carrier: Carrier? { settings.value.carrierOverride ?? detection.carrier }
+
+    /// The profile is installed and working: either verified right now or verified earlier.
+    private var profileActive: Bool { verifier.state.isVerified || verifiedAt > 0 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -38,13 +47,37 @@ struct CellularCard: View {
                 }
             }
 
-            if let carrier, let url = settings.value.carrierProfileURL(for: carrier) {
+            if profileActive {
+                // Verified: dismiss "Install your profile" and "Choose your carrier profile" for
+                // every carrier, including the Universal profile iOS needs when it hides the SIM.
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .foregroundStyle(Color.green)
+                    Text("Profile installed and active")
+                        .font(.footnote.weight(.medium))
+                    Spacer(minLength: 0)
+                    Button("Reinstall") {
+                        verifiedAt = 0
+                        requestedAt = 0
+                    }
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Brand.orange)
+                    .buttonStyle(.plain)
+                }
+            } else if let carrier, let url = settings.value.carrierProfileURL(for: carrier) {
                 Button {
+                    requestedAt = Date().timeIntervalSince1970
                     UIApplication.shared.open(url)
                 } label: {
-                    Label("Install Your \(carrier.title) Profile", systemImage: "arrow.down.doc")
+                    Label(requestedAt > 0 ? "Download \(carrier.title) Profile Again" : "Install Your \(carrier.title) Profile",
+                          systemImage: "arrow.down.doc")
                 }
                 .buttonStyle(BrandButtonStyle())
+                if requestedAt > 0 {
+                    Text("Profile downloaded. Open Settings > General > VPN & Device Management, tap the profile and Install, then connect.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             } else {
                 NavigationLink {
                     CarrierProfileView()
@@ -68,6 +101,10 @@ struct CellularCard: View {
         .onAppear {
             detection = CarrierDetector.detect()
             budget.refresh()
+            if verifier.state.isVerified { verifiedAt = Date().timeIntervalSince1970 }
+        }
+        .onChange(of: verifier.state) { state in
+            if state.isVerified, verifiedAt == 0 { verifiedAt = Date().timeIntervalSince1970 }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             detection = CarrierDetector.detect()
@@ -108,14 +145,18 @@ struct CellularCard: View {
         if let carrier {
             return settings.value.carrierOverride == nil ? "\(carrier.title) SIM detected" : "\(carrier.title) (chosen manually)"
         }
+        if profileActive { return "Cellular profile active" }
         return detection.summary
     }
 
     private var subtitle: String {
         if let carrier {
-            var text = "APN \(carrier.apn) routed through \(AppSettings.localProxyHost):\(AppSettings.defaultLocalProxyPort)"
+            var text = "APN \(carrier.apn) routed through the local proxy"
             if let radio = detection.radioTechnology { text += " · \(radio)" }
             return text
+        }
+        if profileActive {
+            return "Mobile data is routed through the local proxy."
         }
         if detection.isPlaceholder {
             return "Pick Airtel, MTN, Glo or 9mobile in Advanced & Pro > Carrier Profile."

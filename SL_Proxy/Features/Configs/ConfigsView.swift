@@ -8,6 +8,8 @@ struct ConfigsView: View {
         case paste, scan, subscription
         /// Manual editor; `nil` adds a new server, a node edits that server.
         case manual(ProxyNode?)
+        /// QR code, URI and v2ray JSON for one server.
+        case share(ProxyNode)
         var id: Self { self }
     }
 
@@ -25,13 +27,27 @@ struct ConfigsView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button {
-                        Task { await nodes.testAll() }
+                        sheet = .scan
                     } label: {
-                        Image(systemName: "bolt.horizontal")
+                        Image(systemName: "qrcode.viewfinder")
+                    }
+                    .accessibilityLabel("Scan QR code")
+                }
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    Button {
+                        Task { await nodes.smartConnect() }
+                    } label: {
+                        Text("\u{1F406}")
                     }
                     .disabled(nodes.nodes.isEmpty)
+                    .accessibilityLabel("Smart Connect")
+                    Button("Ping All") {
+                        Task { await nodes.testAll() }
+                    }
+                    .font(.subheadline)
+                    .disabled(nodes.nodes.isEmpty)
+                    addMenu
                 }
-                ToolbarItem(placement: .navigationBarTrailing) { addMenu }
             }
             .sheet(item: $sheet) { sheet in
                 switch sheet {
@@ -39,6 +55,7 @@ struct ConfigsView: View {
                 case .scan: QRScannerSheet()
                 case .subscription: AddSubscriptionSheet()
                 case .manual(let node): ManualConfigSheet(node: node)
+                case .share(let node): ShareConfigSheet(node: node)
                 }
             }
         }
@@ -142,6 +159,10 @@ struct ConfigsView: View {
                 Button(role: .destructive) { nodes.delete(node) } label: {
                     Label("Delete", systemImage: "trash")
                 }
+                Button { sheet = .share(node) } label: {
+                    Label("Share", systemImage: "square.and.arrow.up")
+                }
+                .tint(Brand.orange)
                 if isManual {
                     Button { sheet = .manual(node) } label: {
                         Label("Edit", systemImage: "pencil")
@@ -162,6 +183,9 @@ struct ConfigsView: View {
                     Button { sheet = .manual(node) } label: {
                         Label("Edit", systemImage: "pencil")
                     }
+                }
+                Button { sheet = .share(node) } label: {
+                    Label("Share", systemImage: "square.and.arrow.up")
                 }
                 Button {
                     UIPasteboard.general.string = node.shareURL
@@ -214,6 +238,11 @@ struct ConfigsView: View {
                     nodes.toast = "Subscription URL copied"
                 } label: {
                     Label("Copy URL", systemImage: "doc.on.doc")
+                }
+                Button {
+                    Task { await nodes.smartConnect() }
+                } label: {
+                    Text("\u{1F406} Smart Connect")
                 }
                 Button(role: .destructive) { nodes.delete(subscription) } label: {
                     Label("Remove subscription", systemImage: "trash")

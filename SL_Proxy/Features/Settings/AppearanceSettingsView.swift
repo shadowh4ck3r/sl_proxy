@@ -159,7 +159,8 @@ private struct NavigationStyleOption: View {
 }
 
 /// Mock Home screen: two cards in the style (flat with a solid edge for Erosion, frosted with a
-/// gradient edge for Katzy) and the small Connect button docked at the bottom-left.
+/// gradient edge for Katzy) and the Connect button docked at the bottom-left: the vintage wooden
+/// switch for Erosion, the glass ring for Katzy.
 private struct NavigationStyleThumbnail: View {
     let style: NavigationStyle
 
@@ -181,10 +182,17 @@ private struct NavigationStyleThumbnail: View {
             }
             .padding(10)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            Circle()
-                .fill(Brand.gradient)
-                .frame(width: 22, height: 22)
-                .padding(8)
+            Group {
+                if style.usesGlassmorphism {
+                    Circle()
+                        .fill(Brand.gradient)
+                        .frame(width: 22, height: 22)
+                } else {
+                    VintageConnectSwitch(height: 24, isOn: true, action: {})
+                        .allowsHitTesting(false)
+                }
+            }
+            .padding(8)
         }
         .frame(height: 104)
         .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))

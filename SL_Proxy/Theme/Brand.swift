@@ -31,10 +31,11 @@ enum Brand {
 /// Frosted glass card with a subtle gold-to-orange edge highlight.
 struct GlassCard: ViewModifier {
     var cornerRadius: CGFloat = 22
+    var padding: CGFloat = 20
 
     func body(content: Content) -> some View {
         content
-            .padding(20)
+            .padding(padding)
             .background(
                 .ultraThinMaterial,
                 in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -49,8 +50,8 @@ struct GlassCard: ViewModifier {
 }
 
 extension View {
-    func glassCard(cornerRadius: CGFloat = 22) -> some View {
-        modifier(GlassCard(cornerRadius: cornerRadius))
+    func glassCard(cornerRadius: CGFloat = 22, padding: CGFloat = 20) -> some View {
+        modifier(GlassCard(cornerRadius: cornerRadius, padding: padding))
     }
 }
 
@@ -78,14 +79,15 @@ extension View {
 struct NavigationStyleCard: ViewModifier {
     let style: NavigationStyle
     var cornerRadius: CGFloat = 22
+    var padding: CGFloat = 20
 
     @ViewBuilder
     func body(content: Content) -> some View {
         if style.usesGlassmorphism {
-            content.glassCard(cornerRadius: cornerRadius)
+            content.glassCard(cornerRadius: cornerRadius, padding: padding)
         } else {
             content
-                .padding(20)
+                .padding(padding)
                 .background(
                     Color(.secondarySystemBackground),
                     in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -99,8 +101,8 @@ struct NavigationStyleCard: ViewModifier {
 }
 
 extension View {
-    func navigationStyleCard(_ style: NavigationStyle, cornerRadius: CGFloat = 22) -> some View {
-        modifier(NavigationStyleCard(style: style, cornerRadius: cornerRadius))
+    func navigationStyleCard(_ style: NavigationStyle, cornerRadius: CGFloat = 22, padding: CGFloat = 20) -> some View {
+        modifier(NavigationStyleCard(style: style, cornerRadius: cornerRadius, padding: padding))
     }
 }
 

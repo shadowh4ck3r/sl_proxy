@@ -241,6 +241,23 @@ final class NodeStore: ObservableObject {
         testingIDs.removeAll()
     }
 
+    /// Smart Connect: tests every server and selects the fastest one that answered. Shows a toast
+    /// with the result; nothing changes when no server answered.
+    @discardableResult
+    func smartConnect() async -> ProxyNode? {
+        guard !nodes.isEmpty else { return nil }
+        toast = "Smart Connect: testing \(nodes.count) servers..."
+        await testAll()
+        let answered = nodes.filter { ($0.latencyMs ?? -1) >= 0 }
+        guard let best = answered.min(by: { ($0.latencyMs ?? Int.max) < ($1.latencyMs ?? Int.max) }) else {
+            toast = "Smart Connect: no server answered"
+            return nil
+        }
+        select(best)
+        toast = "\u{1F406} Smart Connect: \(best.name) (\(best.latencyMs ?? 0) ms)"
+        return best
+    }
+
     /// Off the main actor: URL test through the core for the active node, TCP connect otherwise.
     /// A core that is not running falls through to the TCP probe; a server that does not answer
     /// either way is -1.

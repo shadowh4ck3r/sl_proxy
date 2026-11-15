@@ -115,7 +115,7 @@ struct NodeRow: View {
                     .lineLimit(1)
                 HStack(spacing: 6) {
                     KindBadge(kind: node.kind)
-                    Text(node.displayServer)
+                    Text(node.displayServer.masked)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)

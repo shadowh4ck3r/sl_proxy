@@ -7,31 +7,45 @@ struct LocalProxyCard: View {
     var passthroughActive: Bool = false
     let onCopy: () -> Void
 
+    @State private var revealed = false
+
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
+        HStack(spacing: 10) {
             Image(systemName: "point.3.connected.trianglepath.dotted")
-                .font(.title2)
+                .font(.body)
                 .foregroundStyle(iconStyle)
-                .frame(width: 36)
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text("Local proxy (HTTP + SOCKS5)")
-                        .font(.headline)
+                .frame(width: 26)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text("Local proxy")
+                        .font(.subheadline.weight(.semibold))
                     if passthroughActive {
                         Text("DIRECT")
                             .font(.caption2.weight(.bold))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
                             .background(Color.orange.opacity(0.18), in: Capsule())
                             .foregroundStyle(Color.orange)
                     }
                 }
-                Text(endpoint)
-                    .font(.system(.subheadline, design: .monospaced))
-                    .foregroundStyle(endpointStyle)
-                Text(statusCaption)
-                    .font(.caption)
+                HStack(spacing: 6) {
+                    Text(revealed ? endpoint : endpoint.masked)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(endpointStyle)
+                    Button {
+                        revealed.toggle()
+                    } label: {
+                        Image(systemName: revealed ? "eye.slash" : "eye")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
+                    .accessibilityLabel(revealed ? "Hide address" : "Show address")
+                }
+                Text(statusCaption)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
             Spacer(minLength: 0)
             Button(action: onCopy) {
@@ -40,9 +54,16 @@ struct LocalProxyCard: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
+            .accessibilityLabel("Copy proxy address")
         }
+        .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassCard(cornerRadius: 18)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Brand.gradient, lineWidth: 1)
+                .opacity(0.5)
+        )
     }
 
     private var iconStyle: AnyShapeStyle {
@@ -58,12 +79,8 @@ struct LocalProxyCard: View {
     }
 
     private var statusCaption: String {
-        if isRunning {
-            return "Listening. Point Wi-Fi > Configure Proxy > Manual, or an app's SOCKS5 setting, at this address."
-        }
-        if passthroughActive {
-            return "Port held — traffic goes direct to the internet. Reconnect to route through the proxy node."
-        }
-        return "Starts when you connect. Only works while SL_Proxy stays open."
+        if isRunning { return "Listening" }
+        if passthroughActive { return "Port held, traffic goes direct" }
+        return "Starts when you connect"
     }
 }
