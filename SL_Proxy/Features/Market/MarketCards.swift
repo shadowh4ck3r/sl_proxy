@@ -6,6 +6,7 @@ func marketCountryName(_ code: String) -> String {
 }
 
 /// ₦ 1,500.00
+@MainActor
 func marketPrice(_ amount: Double) -> String {
     "\u{20A6}" + SLAccountStore.format(amount)
 }
