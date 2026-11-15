@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Template rendered by scripts/setup-signing.sh into build/ExportOptions.plist -->
+	<!-- method: release-testing (ad-hoc), debugging (development), app-store-connect -->
+	<key>method</key>
+	<string>__EXPORT_METHOD__</string>
+	<key>teamID</key>
+	<string>__TEAM_ID__</string>
+	<key>signingStyle</key>
+	<string>manual</string>
+	<key>signingCertificate</key>
+	<string>__SIGN_IDENTITY__</string>
+	<key>provisioningProfiles</key>
+	<dict>
+		<key>com.slproxy.app</key>
+		<string>__PROFILE_APP__</string>
+		<key>com.slproxy.app.tunnel</key>
+		<string>__PROFILE_TUNNEL__</string>
+	</dict>
+	<key>stripSwiftSymbols</key>
+	<true/>
+	<key>thinning</key>
+	<string>&lt;none&gt;</string>
+</dict>
+</plist>

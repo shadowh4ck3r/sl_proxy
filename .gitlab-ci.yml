@@ -1,0 +1,301 @@
+# SL_Proxy CI, USER-SPACE LOOPBACK variant (branch feature/user-space-loopback)
+# Branch feature/advanced-plus-ui is based on this build (baseline commit 1ab7752d).
+# Builds the sing-box core (Libbox), compiles the app, and exports an IPA.
+#
+# This branch has no tunnel extension: sing-box runs inside the app and listens on 127.0.0.1:20080
+# by default (HTTP + SOCKS5; the port is configurable in Settings, 1080 is avoided because other
+# proxy tools hold it). Artifacts are named SailorsLoot-UserSpace-Test* so they can be tested next
+# to the system VPN build produced from `main`.
+#
+# Runs on GitLab-hosted macOS runners by default (Premium/Ultimate or trial; 6x compute minutes).
+# To use your own Mac runner instead, set the CI/CD variable MAC_RUNNER_TAG to the tag you
+# registered it with (for example "macos"). The runner needs Xcode 16, Homebrew and git.
+
+# Branch pipelines only. Jobs without `rules` never run in merge_request_event pipelines, so
+# letting GitLab create those only produces an empty, failed pipeline on every MR.
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: never
+    - when: always
+
+stages:
+  - core
+  - verify
+  - package
+
+variables:
+  SCHEME: "SL_Proxy"
+  PROJECT: "SL_Proxy.xcodeproj"
+  ARCHIVE_PATH: "build/SL_Proxy.xcarchive"
+  IPA_DIR: "build/ipa"
+  SIMULATOR: "platform=iOS Simulator,name=iPhone 16"
+  # File names of the produced IPAs (see scripts/package-unsigned-ipa.sh).
+  IPA_BASENAME: "SailorsLoot-UserSpace-Test"
+  SIGNED_IPA_NAME: "SailorsLoot-UserSpace-Test.ipa"
+  # Carrier configuration profiles exported next to the IPAs, only on CELLULAR_PROFILE_BRANCH
+  # (see scripts/generate-cellular-mobileconfig.sh). One com.apple.cellular profile per carrier
+  # (Airtel, MTN, Glo, 9mobile), each pointing its APN at the user-space listener, plus one
+  # Universal-Cellular-Proxy.mobileconfig that carries all four APNs in a single payload so one
+  # install covers every SIM. The Global HTTP Proxy payload is never emitted (the script pins
+  # INCLUDE_GLOBAL_HTTP_PROXY to 0) because iOS only installs it on supervised devices.
+  CELLULAR_PROFILE_BRANCH: "feature/advanced-plus-ui"
+  # Four carrier profiles + one universal bundle.
+  CELLULAR_PROFILE_COUNT: "5"
+  CELLULAR_PROFILE_PROXY_HOST: "127.0.0.1"
+  CELLULAR_PROFILE_PROXY_PORT: "20080"
+  CELLULAR_PROFILE_INCLUDE_GLOBAL_HTTP_PROXY: "0"
+  # Pinned sing-box release used to build Libbox.xcframework. Bump deliberately.
+  SINGBOX_VERSION: "v1.11.15"
+  # Go toolchain used for the Libbox build (newer Go breaks gomobile's pinned x/tools).
+  GO_TOOLCHAIN: "go1.23.10"
+  # Runner tag: GitLab-hosted macOS by default, override with your self-hosted Mac runner's tag.
+  MAC_RUNNER_TAG: "saas-macos-medium-m1"
+  # build_libbox restores Frameworks/Libbox.xcframework from the CI cache and skips the build
+  # when it is already there. Set this to "1" in Build > Pipelines > New pipeline to rebuild the
+  # core from source and replace a stale or incomplete cached framework.
+  FORCE_REBUILD: "0"
+  # Bump when the cached framework must be thrown away for everyone (layout change, broken build).
+  LIBBOX_CACHE_GENERATION: "v2"
+  # Device slice of the xcframework that the app links against.
+  LIBBOX_DEVICE_SLICE: "Frameworks/Libbox.xcframework/ios-arm64/Libbox.framework"
+
+default:
+  # Only meaningful on GitLab-hosted runners; self-hosted shell runners ignore it.
+  image: macos-15-xcode-16
+  tags:
+    - $MAC_RUNNER_TAG
+  interruptible: true
+
+.xcodegen:
+  before_script:
+    - export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+    - xcodebuild -version
+    - command -v brew >/dev/null 2>&1 || { echo "Homebrew is required on the runner"; exit 1; }
+    - brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+    # App icon + in-app logo from sailorsloot.xyz (non-fatal if the download fails)
+    - bash ./scripts/fetch-brand-assets.sh
+    # No setup-app-group.sh here: the user-space build has no extension and needs no App Group.
+    - xcodegen generate
+
+# ---------------------------------------------------------------------------
+# 1. sing-box core -> Frameworks/Libbox.xcframework
+# ---------------------------------------------------------------------------
+build_libbox:
+  stage: core
+  cache:
+    # v1 of this key held a framework produced by an early build script that the tunnel never
+    # managed to link. Changing LIBBOX_CACHE_GENERATION discards it for every branch.
+    key: "libbox-${SINGBOX_VERSION}-${LIBBOX_CACHE_GENERATION}"
+    paths:
+      - Frameworks/Libbox.xcframework
+  before_script:
+    - export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+    # Go is the only prerequisite; build-libbox.sh installs the gomobile fork sing-box needs
+    # (`make lib_install`) and pins the Go release through GOTOOLCHAIN.
+    - if ! command -v go >/dev/null 2>&1; then echo "Installing Go..."; brew install go; fi
+    - export PATH="$PATH:$(go env GOPATH)/bin"
+    - go version
+    - chmod +x scripts/*.sh
+  script:
+    - echo "FORCE_REBUILD=$FORCE_REBUILD  cache=libbox-${SINGBOX_VERSION}-${LIBBOX_CACHE_GENERATION}"
+    # Only reuse a cached framework the app can actually import. Anything else is removed so
+    # build-libbox.sh compiles sing-box from source instead of exiting early on "already present".
+    - |
+      if [ -d Frameworks/Libbox.xcframework ]; then
+        if [ "$FORCE_REBUILD" = "1" ]; then
+          echo "FORCE_REBUILD=1; discarding the cached Libbox.xcframework"
+          rm -rf Frameworks/Libbox.xcframework
+        elif [ ! -e "$LIBBOX_DEVICE_SLICE/Libbox" ] || ! find -L "$LIBBOX_DEVICE_SLICE" -name module.modulemap | grep -q .; then
+          echo "Cached Libbox.xcframework is incomplete (no binary or module map); rebuilding from source"
+          rm -rf Frameworks/Libbox.xcframework
+        else
+          echo "Reusing cached Libbox.xcframework"
+        fi
+      else
+        echo "No cached Libbox.xcframework; building from source"
+      fi
+    - bash ./scripts/build-libbox.sh
+    # Fail here instead of shipping an IPA without the proxy engine.
+    - |
+      if [ ! -d Frameworks/Libbox.xcframework ]; then
+        echo "error: Libbox.xcframework was not produced"
+        exit 1
+      fi
+    # The app can only `import Libbox` if the device slice carries a binary and a module map.
+    # gomobile frameworks may use a Versions/A layout with symlinks, so follow links.
+    - |
+      echo "--- Libbox.xcframework contents"
+      find Frameworks/Libbox.xcframework -maxdepth 5 | sort
+      if [ ! -e "$LIBBOX_DEVICE_SLICE/Libbox" ]; then
+        echo "error: $LIBBOX_DEVICE_SLICE/Libbox is missing. The framework is incomplete; rerun the pipeline with FORCE_REBUILD=1"
+        exit 1
+      fi
+      if ! find -L "$LIBBOX_DEVICE_SLICE" -name module.modulemap | grep -q .; then
+        echo "error: $LIBBOX_DEVICE_SLICE has no module.modulemap, so Swift cannot import Libbox. Rerun the pipeline with FORCE_REBUILD=1"
+        exit 1
+      fi
+      if [ -d "$LIBBOX_DEVICE_SLICE/Versions" ]; then
+        echo "warning: $LIBBOX_DEVICE_SLICE uses a macOS-style Versions/A layout; iOS frameworks are normally flat"
+      fi
+      # gomobile emits a static archive ("current ar archive"); a dylib would say "Mach-O ... shared library".
+      echo "--- Libbox device binary type"
+      file -L "$LIBBOX_DEVICE_SLICE/Libbox"
+      echo "--- Libbox module map"
+      find -L "$LIBBOX_DEVICE_SLICE" -name module.modulemap -exec cat {} \;
+      echo "OK: Libbox device slice has a binary and a module map"
+  artifacts:
+    paths:
+      - Frameworks/Libbox.xcframework
+    expire_in: 1 week
+
+# ---------------------------------------------------------------------------
+# 2. Compile check on the Simulator (no signing needed)
+# ---------------------------------------------------------------------------
+build_simulator:
+  stage: verify
+  extends: .xcodegen
+  needs: [build_libbox]
+  script:
+    - xcodebuild build
+        -project "$PROJECT" -scheme "$SCHEME"
+        -destination "$SIMULATOR"
+        CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
+        -quiet
+
+# ---------------------------------------------------------------------------
+# 3. IPA export
+#    Signed when Apple credentials exist as CI variables, otherwise unsigned IPAs are produced:
+#      SailorsLoot-UserSpace-Test-unsigned.ipa  for re-signers (a free Apple ID is enough)
+#      SailorsLoot-UserSpace-Test.ipa           ad-hoc signed, install via TrollStore / TrollStore Lite
+#
+#    SL_PROXY_EXTRA_SWIFT_CONDITIONS=REQUIRE_LIBBOX turns the app's `#if canImport(Libbox)`
+#    fallback into a compile error (see LocalProxyEngine.swift), so a build that cannot see the
+#    core fails here with the reason instead of producing an IPA without a proxy engine.
+#
+#    On feature/advanced-plus-ui the job also writes the four carrier profiles (Airtel-, MTN-,
+#    Glo- and 9mobile-Cellular-Proxy.mobileconfig: com.apple.cellular payloads pointing each APN
+#    at 127.0.0.1:20080, no Global HTTP Proxy) plus Universal-Cellular-Proxy.mobileconfig (all four
+#    APNs in one payload) into the same directory, so they are downloaded together with the IPAs
+#    from one artifact archive and install on unsupervised devices.
+# ---------------------------------------------------------------------------
+build_ipa:
+  stage: package
+  extends: .xcodegen
+  needs: [build_libbox]
+  script:
+    - |
+      if [ ! -d Frameworks/Libbox.xcframework ]; then
+        echo "error: Frameworks/Libbox.xcframework missing; the build_libbox artifact did not arrive"
+        exit 1
+      fi
+    - mkdir -p "$IPA_DIR"
+    # Show what the app target really compiles with before spending minutes on the archive.
+    - |
+      echo "--- SL_Proxy build settings (iphoneos)"
+      xcodebuild -showBuildSettings -project "$PROJECT" -target SL_Proxy -sdk iphoneos \
+        SL_PROXY_EXTRA_SWIFT_CONDITIONS=REQUIRE_LIBBOX 2>/dev/null \
+        | grep -E '^ *(SWIFT_ACTIVE_COMPILATION_CONDITIONS|FRAMEWORK_SEARCH_PATHS|PRODUCT_BUNDLE_IDENTIFIER|CODE_SIGN_ENTITLEMENTS) =' || true
+    - |
+      if [ -n "${APPLE_CERTIFICATE_P12:-}" ]; then
+        echo "Signing credentials found: producing a signed IPA"
+        source ./scripts/setup-signing.sh
+        xcodebuild archive \
+          -project "$PROJECT" -scheme "$SCHEME" \
+          -destination "generic/platform=iOS" -archivePath "$ARCHIVE_PATH" \
+          DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+          CODE_SIGN_STYLE=Manual \
+          CODE_SIGN_IDENTITY="$CODE_SIGN_IDENTITY_NAME" \
+          PROFILE_APP_NAME="$PROFILE_APP_NAME" \
+          SL_PROXY_EXTRA_SWIFT_CONDITIONS=REQUIRE_LIBBOX \
+          -quiet
+        xcodebuild -exportArchive \
+          -archivePath "$ARCHIVE_PATH" \
+          -exportOptionsPlist build/ExportOptions.plist \
+          -exportPath "$IPA_DIR" -quiet
+        for f in "$IPA_DIR"/*.ipa; do
+          mv "$f" "$IPA_DIR/$IPA_BASENAME-signed.ipa"
+        done
+      else
+        echo "No signing credentials: producing UNSIGNED IPAs"
+        xcodebuild archive \
+          -project "$PROJECT" -scheme "$SCHEME" \
+          -destination "generic/platform=iOS" -archivePath "$ARCHIVE_PATH" \
+          CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+          SL_PROXY_EXTRA_SWIFT_CONDITIONS=REQUIRE_LIBBOX \
+          -quiet
+        bash ./scripts/package-unsigned-ipa.sh
+      fi
+    # feature/advanced-plus-ui only: generate the per-carrier cellular profiles next to the IPAs.
+    # INCLUDE_GLOBAL_HTTP_PROXY=0 is passed explicitly (and pinned inside the script) so every
+    # profile installs on unsupervised devices. Other branches skip this step and their artifacts
+    # are unchanged.
+    - |
+      if [ "${CI_COMMIT_BRANCH:-}" = "$CELLULAR_PROFILE_BRANCH" ]; then
+        echo "Branch $CI_COMMIT_BRANCH: generating $CELLULAR_PROFILE_COUNT .mobileconfig profiles (4 carriers + universal)"
+        PROXY_HOST="$CELLULAR_PROFILE_PROXY_HOST" PROXY_PORT="$CELLULAR_PROFILE_PROXY_PORT" \
+        INCLUDE_GLOBAL_HTTP_PROXY="$CELLULAR_PROFILE_INCLUDE_GLOBAL_HTTP_PROXY" \
+          bash ./scripts/generate-cellular-mobileconfig.sh "$IPA_DIR"
+        for profile in "$IPA_DIR"/*.mobileconfig; do
+          echo "--- $(basename "$profile")"
+          cat "$profile"
+        done
+        count="$(ls "$IPA_DIR"/*.mobileconfig 2>/dev/null | wc -l | tr -d ' ')"
+        if [ "$count" -ne "$CELLULAR_PROFILE_COUNT" ]; then
+          echo "error: expected $CELLULAR_PROFILE_COUNT carrier profiles in $IPA_DIR, found $count"
+          exit 1
+        fi
+      else
+        echo "Branch ${CI_COMMIT_BRANCH:-unknown}: carrier .mobileconfig profiles are only generated on $CELLULAR_PROFILE_BRANCH"
+      fi
+    - ls -la "$IPA_DIR"
+    # The app is useless without the core, and this variant must not carry a tunnel extension.
+    # gomobile builds Libbox as a static framework, so the core is merged into the app binary and
+    # `otool -L` shows no Libbox load command; the LibboxBoxService ObjC class name (never
+    # stripped) proves it was compiled in. `grep -a` scans the whole Mach-O file.
+    - |
+      for ipa in "$IPA_DIR"/*.ipa; do
+        name="$(basename "$ipa")"
+        tmp="$(mktemp -d)"
+        unzip -q "$ipa" -d "$tmp"
+        app="$tmp/Payload/SL_Proxy.app"
+        bin="$app/SL_Proxy"
+        if [ ! -f "$bin" ]; then
+          echo "error: $name has no app binary at Payload/SL_Proxy.app/SL_Proxy"
+          rm -rf "$tmp"
+          exit 1
+        fi
+        if [ -d "$app/PlugIns/SL_ProxyTunnel.appex" ]; then
+          echo "error: $name still contains the tunnel extension; the user-space build must not ship one"
+          rm -rf "$tmp"
+          exit 1
+        fi
+        echo "--- $name: bundle identifier"
+        plutil -extract CFBundleIdentifier raw -o - "$app/Info.plist" || true
+        echo "--- $name: app binary (with sing-box linked in it is tens of MB)"
+        ls -la "$bin"
+        echo "--- $name: app load commands"
+        otool -L "$bin"
+        if otool -L "$bin" | grep -q "Libbox.framework/Libbox"; then
+          if [ ! -f "$app/Frameworks/Libbox.framework/Libbox" ]; then
+            echo "error: $name links Libbox dynamically but does not embed Libbox.framework"
+            rm -rf "$tmp"
+            exit 1
+          fi
+          echo "OK: $name links the sing-box core dynamically and the framework is embedded"
+        elif grep -qa "LibboxBoxService" "$bin"; then
+          echo "OK: $name links the sing-box core statically"
+        else
+          echo "error: $name contains no Libbox symbols (compiled with canImport(Libbox) == false)"
+          rm -rf "$tmp"
+          exit 1
+        fi
+        rm -rf "$tmp"
+      done
+  artifacts:
+    name: "${IPA_BASENAME}-${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - build/ipa/*.ipa
+      # Present only on CELLULAR_PROFILE_BRANCH; a non-matching glob is a warning, not a failure.
+      - build/ipa/*.mobileconfig
+    expire_in: 2 weeks

@@ -1,0 +1,101 @@
+# XcodeGen spec for SL_Proxy, USER-SPACE LOOPBACK variant (branch feature/user-space-loopback).
+# Generate the Xcode project with `make project` (or `xcodegen generate`).
+#
+# Differences from the system VPN build on `main`:
+#   - no SL_ProxyTunnel target: sing-box runs inside the app (SL_Proxy/Core/LocalProxyEngine.swift)
+#     and listens on 127.0.0.1:20080 by default (HTTP + SOCKS5, port configurable in Settings;
+#     1080 is avoided because other proxy tools hold it); nothing touches NetworkExtension
+#   - no Network Extension / App Group entitlements, so a free Apple ID or TrollStore Lite is enough
+#   - bundle id com.slproxy.userspace so it installs next to the system VPN build
+# SL_ProxyTunnel/ is kept in the repository for `main` but is not part of any target here.
+name: SL_Proxy
+
+options:
+  bundleIdPrefix: com.slproxy
+  deploymentTarget:
+    iOS: "16.0"
+  xcodeVersion: "16.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MARKETING_VERSION: "0.3.0"
+    CURRENT_PROJECT_VERSION: "1"
+    IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+    TARGETED_DEVICE_FAMILY: "1"
+    DEVELOPMENT_TEAM: ${APPLE_TEAM_ID}
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    # Point Swift and the linker straight at the xcframework slices so `import Libbox` resolves
+    # even when Xcode's automatic xcframework processing does not expose the module.
+    "FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]":
+      - $(inherited)
+      - $(SRCROOT)/Frameworks/Libbox.xcframework/ios-arm64
+    "FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*]":
+      - $(inherited)
+      - $(SRCROOT)/Frameworks/Libbox.xcframework/ios-arm64_x86_64-simulator
+
+targets:
+  SL_Proxy:
+    type: application
+    platform: iOS
+    sources:
+      - SL_Proxy
+      - Shared
+    dependencies:
+      - framework: Frameworks/Libbox.xcframework
+        embed: true
+        codeSign: true
+    info:
+      path: SL_Proxy/Info.plist
+      properties:
+        CFBundleDisplayName: SL_Proxy
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIUserInterfaceStyle: Automatic
+        # Keep the in-app proxy alive when minimized. `audio` backs the muted silent track played
+        # by BackgroundKeepAlive.swift; `unboundedTaskCompletion` is a private mode that lifts the
+        # 30 s background-task cap on TrollStore installs and is ignored by normal installs.
+        UIBackgroundModes:
+          - audio
+          - unboundedTaskCompletion
+        NSCameraUsageDescription: SL_Proxy uses the camera to scan QR codes for proxy configurations.
+        ITSAppUsesNonExemptEncryption: false
+        # Live traffic statistics are read from the sing-box Clash API on loopback.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        # Open share links from other apps (Safari, Telegram, ...) directly in SL_Proxy.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.slproxy.userspace.share-links
+            CFBundleTypeRole: Viewer
+            CFBundleURLSchemes:
+              - ss
+              - vmess
+              - vless
+              - trojan
+              - hysteria
+              - hysteria2
+              - hy2
+              - tuic
+              - socks
+              - socks5
+              - wireguard
+              - wg
+    settings:
+      base:
+        # The user-space engine needs no capability; the file only carries the iCloud key-value
+        # entitlement for Advanced & Pro > iCloud Backup (ICloudBackupStore).
+        CODE_SIGN_ENTITLEMENTS: SL_Proxy/SL_Proxy.entitlements
+        PRODUCT_BUNDLE_IDENTIFIER: com.slproxy.userspace
+        PRODUCT_NAME: SL_Proxy
+        # Resolved from the CI environment for manual signing; empty (ignored) locally.
+        PROVISIONING_PROFILE_SPECIFIER: $(PROFILE_APP_NAME)
+        # CI passes SL_PROXY_EXTRA_SWIFT_CONDITIONS=REQUIRE_LIBBOX so an app built without the
+        # sing-box core fails to compile (LocalProxyEngine.swift) instead of shipping. Empty locally.
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) $(SL_PROXY_EXTRA_SWIFT_CONDITIONS)

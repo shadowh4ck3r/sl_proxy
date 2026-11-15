@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Container app entitlements for the TrollStore / TrollStore Lite IPA of the USER-SPACE
+         LOOPBACK build (scripts/package-unsigned-ipa.sh). sing-box runs inside the app, so no
+         Network Extension, VPN API, keychain or App Group entitlement is needed. Only the
+         identifiers ldid / TrollStore do not synthesize remain, plus the iCloud key-value
+         container used by Advanced & Pro > iCloud Backup (ICloudBackupStore). -->
+    <key>application-identifier</key>
+    <string>SLPROXY000.com.slproxy.userspace</string>
+    <key>com.apple.developer.team-identifier</key>
+    <string>SLPROXY000</string>
+    <key>com.apple.developer.ubiquity-kvstore-identifier</key>
+    <string>SLPROXY000.com.slproxy.userspace</string>
+    <key>get-task-allow</key>
+    <false/>
+</dict>
+</plist>

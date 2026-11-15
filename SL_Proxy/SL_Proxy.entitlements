@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- User-space loopback build: sing-box runs inside the app, so no Network Extension, VPN or
+         App Group capability is required. The system VPN build on `main` carries
+         packet-tunnel-provider and the App Group in this file.
+         The only capability is iCloud key-value storage, which backs Settings > Advanced & Pro >
+         iCloud Backup (SL_Proxy/Core/ICloudBackupStore.swift). Builds signed without it still run;
+         the backup screen then reports the missing entitlement instead of syncing. -->
+    <key>com.apple.developer.ubiquity-kvstore-identifier</key>
+    <string>$(TeamIdentifierPrefix)$(CFBundleIdentifier)</string>
+</dict>
+</plist>
