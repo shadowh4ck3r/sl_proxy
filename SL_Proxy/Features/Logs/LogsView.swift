@@ -7,8 +7,20 @@ struct LogsView: View {
     @State private var nextIndex = 0
     @State private var paused = false
 
+    /// True when pushed from Settings (already inside a NavigationStack).
+    var embedded = false
+
+    @ViewBuilder
     var body: some View {
-        NavigationStack {
+        if embedded {
+            content
+        } else {
+            NavigationStack { content }
+        }
+    }
+
+    private var content: some View {
+        Group {
             ZStack {
                 Brand.background
                 if lines.isEmpty {

@@ -15,6 +15,7 @@ set -uo pipefail
 
 APP_ICON_URL="${APP_ICON_URL:-https://sailorsloot.xyz/wp-content/uploads/2026/11/4DEDB0B3-C5C8-4E16-A185-7ECECF16517A.jpg}"
 IN_APP_LOGO_URL="${IN_APP_LOGO_URL:-https://sailorsloot.xyz/wp-content/uploads/2026/07/cropped-Untitled-design-4.png}"
+SPLASH_URL="${SPLASH_URL:-https://sailorsloot.xyz/wp-content/uploads/2026/11/3F225F46-B241-4748-8678-E162EA81C2EB.jpg}"
 ICON_BACKGROUND="${ICON_BACKGROUND:-0F1014}"
 ICON_INSET="${ICON_INSET:-1.0}"
 
@@ -24,8 +25,10 @@ ICONSET="$ASSETS/AppIcon.appiconset"
 LOGOSET="$ASSETS/Logo.imageset"
 ICON_OUT="$ICONSET/AppIcon-1024.png"
 LOGO_OUT="$LOGOSET/logo.png"
+SPLASHSET="$ASSETS/Splash.imageset"
+SPLASH_OUT="$SPLASHSET/splash.png"
 
-if [ -f "$ICON_OUT" ] && [ -f "$LOGO_OUT" ] && [ "${FORCE_ASSETS:-0}" != "1" ]; then
+if [ -f "$ICON_OUT" ] && [ -f "$LOGO_OUT" ] && [ -f "$SPLASH_OUT" ] && [ "${FORCE_ASSETS:-0}" != "1" ]; then
   echo "Brand assets already present (set FORCE_ASSETS=1 to refresh)"
   exit 0
 fi
@@ -84,3 +87,15 @@ else
 fi
 
 exit 0
+
+# --- Splash screen ------------------------------------------------------------
+mkdir -p "$SPLASHSET"
+if download "$SPLASH_URL" "$WORK/splash-src.jpg"; then
+  if sips -s format png "$WORK/splash-src.jpg" --out "$SPLASH_OUT" >/dev/null 2>&1; then
+    echo "Splash written to $SPLASH_OUT"
+  else
+    cp "$WORK/splash-src.jpg" "$SPLASH_OUT" && echo "Splash copied to $SPLASH_OUT"
+  fi
+else
+  echo "warning: could not download the splash from $SPLASH_URL"
+fi

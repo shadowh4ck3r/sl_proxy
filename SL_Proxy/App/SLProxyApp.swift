@@ -6,13 +6,20 @@ struct SLProxyApp: App {
     @StateObject private var nodes: NodeStore
     @StateObject private var tunnel: TunnelController
     @StateObject private var backup: ICloudBackupStore
+    @StateObject private var account: SLAccountStore
+    @StateObject private var market: ProxyMarketStore
+    @State private var showSplash = true
 
     init() {
         let settings = SettingsStore()
         let nodes = NodeStore()
+        let tunnel = TunnelController(nodes: nodes, settings: settings)
+        let account = SLAccountStore()
         _settings = StateObject(wrappedValue: settings)
         _nodes = StateObject(wrappedValue: nodes)
-        _tunnel = StateObject(wrappedValue: TunnelController(nodes: nodes, settings: settings))
+        _tunnel = StateObject(wrappedValue: tunnel)
+        _account = StateObject(wrappedValue: account)
+        _market = StateObject(wrappedValue: ProxyMarketStore(account: account, nodes: nodes, tunnel: tunnel))
         // Connects to NSUbiquitousKeyValueStore and starts mirroring servers, subscriptions,
         // rules and options into the user's iCloud account (Advanced & Pro > iCloud Backup).
         _backup = StateObject(wrappedValue: ICloudBackupStore(nodes: nodes, settings: settings))
@@ -25,6 +32,18 @@ struct SLProxyApp: App {
                 .environmentObject(nodes)
                 .environmentObject(tunnel)
                 .environmentObject(backup)
+                .environmentObject(account)
+                .environmentObject(market)
+                .overlay {
+                    if showSplash {
+                        SplashView()
+                            .transition(.opacity)
+                    }
+                }
+                .task {
+                    try? await Task.sleep(for: .seconds(1.4))
+                    withAnimation(.easeOut(duration: 0.4)) { showSplash = false }
+                }
                 // Apply the user's theme choice (system / light / dark) to the whole app.
                 .preferredColorScheme(settings.value.colorScheme.colorScheme)
                 // Apply the user's App Font choice (System / Mono / Sketch) to the whole app.

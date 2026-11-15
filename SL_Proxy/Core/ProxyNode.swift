@@ -93,14 +93,21 @@ struct ProxyNode: Codable, Identifiable, Hashable {
     // Bookkeeping
     var subscriptionID: UUID?
     var shareURL: String?
-    /// Last measured TCP latency in milliseconds; -1 means the test failed.
+    /// Last measured latency in milliseconds; -1 means the test failed.
     var latencyMs: Int?
+    /// Purchased proxies (SailorsLoot 24H / 6H lists) stop working at this moment; nil = never.
+    var expiresAt: Date?
 
     init(name: String, kind: ProxyKind, server: String, port: Int) {
         self.name = name
         self.kind = kind
         self.server = server
         self.port = port
+    }
+
+    var isExpired: Bool {
+        if let expiresAt { return expiresAt < Date() }
+        return false
     }
 
     var displayServer: String {

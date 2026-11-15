@@ -4,13 +4,39 @@ struct SettingsView: View {
     @EnvironmentObject private var settings: SettingsStore
     @EnvironmentObject private var nodes: NodeStore
     @EnvironmentObject private var tunnel: TunnelController
+    @EnvironmentObject private var account: SLAccountStore
     @State private var confirmDeleteAll = false
+    @State private var showAccount = false
 
     var body: some View {
         NavigationStack {
             ZStack {
                 Brand.background
                 Form {
+                    Section {
+                        Button {
+                            showAccount = true
+                        } label: {
+                            HStack {
+                                Label(account.isLoggedIn ? "SailorsLoot Account" : "Connect SailorsLoot Account",
+                                      systemImage: "person.crop.circle")
+                                Spacer()
+                                Text(account.isLoggedIn ? account.balanceText : "")
+                                    .font(.footnote.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                                Image(systemName: "chevron.right")
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                        .foregroundStyle(.primary)
+                        NavigationLink {
+                            LogsView(embedded: true)
+                        } label: {
+                            Label("Logs", systemImage: "doc.text.magnifyingglass")
+                        }
+                    }
+
                     Section {
                         DNSField(title: "Remote DNS (through proxy)", text: $settings.value.remoteDNS, presets: DNSPreset.remote)
                         DNSField(title: "Local DNS (direct)", text: $settings.value.localDNS, presets: DNSPreset.local)
@@ -127,6 +153,7 @@ struct SettingsView: View {
                 .scrollContentBackground(.hidden)
             }
             .navigationTitle("Settings")
+            .sheet(isPresented: $showAccount) { AccountView() }
             .confirmationDialog(
                 "Delete all servers and subscriptions?",
                 isPresented: $confirmDeleteAll,

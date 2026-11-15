@@ -212,7 +212,8 @@ final class ICloudBackupStore: ObservableObject {
 
     private var currentContent: BackupContent {
         // Latency results change on every test and are meaningless on another device.
-        var stripped = nodes.nodes
+        // Purchased SailorsLoot proxies carry a login that expires within a day: never mirror them to iCloud.
+        var stripped = nodes.nodes.filter { $0.expiresAt == nil }
         for index in stripped.indices { stripped[index].latencyMs = nil }
         return BackupContent(nodes: stripped, subscriptions: nodes.subscriptions, settings: settings.value)
     }

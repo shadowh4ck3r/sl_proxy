@@ -107,6 +107,23 @@ final class NodeStore: ObservableObject {
         if activeNodeID == nil { activeNodeID = node.id }
     }
 
+    /// Adds (or refreshes) a purchased SailorsLoot proxy and returns the stored node. The
+    /// username is unique per purchase, so it identifies the same purchase across launches.
+    @discardableResult
+    func addPurchased(_ purchase: SLPurchased, name: String) -> ProxyNode {
+        if let index = nodes.firstIndex(where: { $0.kind == .socks && $0.username == purchase.username }) {
+            nodes[index].expiresAt = purchase.expiresAt
+            nodes[index].latencyMs = nil
+            return nodes[index]
+        }
+        var node = ProxyNode(name: name, kind: .socks, server: purchase.host, port: purchase.port)
+        node.username = purchase.username
+        node.password = purchase.password
+        node.expiresAt = purchase.expiresAt
+        nodes.append(node)
+        return node
+    }
+
     /// Replaces a server in place. Returns true when the edited server is the active one.
     @discardableResult
     func update(_ node: ProxyNode) -> Bool {
@@ -262,12 +279,20 @@ final class NodeStore: ObservableObject {
     /// A core that is not running falls through to the TCP probe; a server that does not answer
     /// either way is -1.
     nonisolated private static func latency(of node: ProxyNode, isActive: Bool) async -> Int {
+        // An expired purchase is dead whatever its gateway still answers.
+        if node.isExpired { return -1 }
         if isActive {
             switch await LatencyTester.realDelay() {
             case .delay(let ms): return ms
             case .unreachable: return -1
             case .unavailable: break
             }
+        }
+        // SOCKS5 / HTTP servers: do the real handshake with the credentials and fetch a URL through
+        // the proxy. A plain TCP connect to a gateway still succeeds after the account or session
+        // behind it has expired, which is how a dead server used to show a latency.
+        if node.kind == .socks || node.kind == .http, !node.tls {
+            return await LatencyTester.proxyRoundTrip(node: node) ?? -1
         }
         return await LatencyTester.measure(host: node.server, port: node.port) ?? -1
     }

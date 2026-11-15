@@ -21,9 +21,9 @@ struct ContentView: View {
             RulesView()
                 .floatingConnectButton(visible: showsConnectButtonEverywhere)
                 .tabItem { Label("Rules", systemImage: "arrow.triangle.branch") }
-            LogsView()
+            MarketView()
                 .floatingConnectButton(visible: showsConnectButtonEverywhere)
-                .tabItem { Label("Logs", systemImage: "doc.text.magnifyingglass") }
+                .tabItem { Label("Proxies", systemImage: "globe") }
             SettingsView()
                 .floatingConnectButton(visible: showsConnectButtonEverywhere)
                 .tabItem { Label("Settings", systemImage: "gearshape") }
