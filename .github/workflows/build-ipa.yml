@@ -1,0 +1,69 @@
+name: Build iOS IPA
+
+on:
+  push:
+    branches:
+      - feature/advanced-plus-ui
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # GitHub's hosted macOS machine supplies Xcode; Xcode is not needed on your Mac.
+    runs-on: macos-15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.23.10
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Build Libbox framework
+        run: bash ./scripts/build-libbox.sh
+
+      - name: Prepare app assets and Xcode project
+        run: |
+          bash ./scripts/fetch-brand-assets.sh
+          xcodegen generate
+
+      - name: Compile for iOS Simulator
+        run: >-
+          xcodebuild build
+          -project SL_Proxy.xcodeproj
+          -scheme SL_Proxy
+          -destination 'platform=iOS Simulator,name=iPhone 16'
+          CODE_SIGNING_ALLOWED=NO
+          CODE_SIGNING_REQUIRED=NO
+          -quiet
+
+      - name: Archive and package unsigned IPA
+        run: |
+          xcodebuild archive \
+            -project SL_Proxy.xcodeproj \
+            -scheme SL_Proxy \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/SL_Proxy.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            -quiet
+          ARCHIVE_PATH=build/SL_Proxy.xcarchive \
+          IPA_DIR=build/ipa \
+          IPA_BASENAME=SailorsLoot-UserSpace-Test \
+          SIGNED_IPA_NAME=SailorsLoot-UserSpace-Test-trollstore.ipa \
+            bash ./scripts/package-unsigned-ipa.sh
+
+      - name: Save IPA files
+        uses: actions/upload-artifact@v4
+        with:
+          name: SL-Proxy-IPAs
+          path: build/ipa/*.ipa
+          if-no-files-found: error
+          retention-days: 14
