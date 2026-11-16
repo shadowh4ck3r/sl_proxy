@@ -1,164 +1,172 @@
 import Foundation
 
-extension Notification.Name {
-    /// Posted when the server answers 401 (token revoked or expired). `AccountStore` listens,
-    /// clears the Keychain and asks the user to sign in again.
-    static let slSessionExpired = Notification.Name("slapp.sessionExpired")
+/// Where the SailorsLoot backend lives. HTTPS only; certificate validation is the standard iOS
+/// one (no pinning, WordPress renews the certificate automatically).
+enum SLConfig {
+    static let apiBase = URL(string: "https://sailorsloot.xyz/wp-json/sl-proxy/v1/")!
+    static let topUpURL = URL(string: "https://sailorsloot.xyz")!
 }
 
-enum SLAPIError: LocalizedError, Equatable {
+enum SLAPIError: LocalizedError {
+    /// 401: no token, expired token or revoked token. The app asks the user to log in again.
     case unauthorized
-    case insecureURL
-    case server(status: Int, message: String)
-    case network(String)
+    case server(message: String, status: Int)
+    case network
     case decoding
 
     var errorDescription: String? {
         switch self {
-        case .unauthorized: return "Your session ended. Sign in again."
-        case .insecureURL: return "Blocked: the request was not HTTPS to sailorsloot.xyz."
-        case .server(_, let message): return message
-        case .network(let message): return message
-        case .decoding: return "Unexpected reply from the server."
+        case .unauthorized: return "Please log in to your SailorsLoot account again."
+        case .server(let message, _): return message
+        case .network: return "Could not reach SailorsLoot. Check your connection and try again."
+        case .decoding: return "SailorsLoot sent a reply the app could not read."
         }
     }
 }
 
-/// Thin HTTPS client for `https://sailorsloot.xyz/wp-json/sl-proxy/v1`.
-///
-/// - Only `https` URLs on `sailorsloot.xyz` are ever requested; redirects to anything else are refused.
-/// - Standard iOS TLS validation through `URLSession` (App Transport Security stays on, TLS 1.2+,
-///   no certificate pinning, so WordPress certificate renewals never break the app).
-/// - The Bearer token is read from the Keychain per request. A 401 clears the session.
-/// - Ephemeral session: no cookies, no URL cache, so balances and credentials are not written to disk.
-final class SLAPIClient: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+// MARK: - Models (snake_case JSON, decoded with convertFromSnakeCase)
+
+struct SLLoginReply: Decodable {
+    let token: String
+    let username: String
+    let displayName: String
+    let balance: Double
+}
+
+struct SLBalanceReply: Decodable {
+    let balance: Double
+    let username: String
+    let displayName: String
+    let activeProxies: Int
+}
+
+struct SLListing: Decodable, Identifiable, Hashable {
+    let id: Int
+    let ipMasked: String
+    let countryCode: String
+    let flag: String
+    let state: String
+    let city: String
+    let zip: String
+    let isp: String
+    let type: String
+    let speed: String
+    let pingMs: Int?
+    let status: String
+    let price: Double
+}
+
+struct SLListingPage: Decodable {
+    let items: [SLListing]
+    let page: Int
+    let totalPages: Int
+    let total: Int
+}
+
+struct SLFilterOptions: Decodable, Equatable {
+    var countries: [String] = []
+    var states: [String] = []
+    var cities: [String] = []
+    var isps: [String] = []
+}
+
+/// Real SOCKS5 credentials of a purchased proxy (purchase reply and 24H history item).
+struct SLPurchased: Decodable, Identifiable, Hashable {
+    var id: String { username }
+    let host: String
+    let port: Int
+    let username: String
+    let password: String
+    let ipMasked: String
+    let country: String
+    let city: String
+    let isp: String
+    let expiresAt: Date
+    var balance: Double?
+}
+
+struct SLHistoryReply: Decodable {
+    let items: [SLPurchased]
+}
+
+private struct SLErrorBody: Decodable {
+    let message: String?
+}
+
+// MARK: - Client
+
+/// All SailorsLoot API calls. The Bearer token comes from the Keychain on every request.
+final class SLAPIClient {
     static let shared = SLAPIClient()
 
-    static let host = "sailorsloot.xyz"
-    private static let base = "https://\(host)/wp-json/sl-proxy/v1"
-
-    private lazy var session: URLSession = {
+    private let session: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
-        configuration.tlsMinimumSupportedProtocolVersion = .TLSv12
-        configuration.httpCookieStorage = nil
-        configuration.httpShouldSetCookies = false
-        configuration.urlCache = nil
-        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
-        configuration.timeoutIntervalForRequest = 25
         configuration.waitsForConnectivity = false
-        return URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
+        return URLSession(configuration: configuration)
     }()
 
-    // MARK: - Public
+    private let decoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let iso = ISO8601DateFormatter()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let text = try decoder.singleValueContainer().decode(String.self)
+            if let date = iso.date(from: text) { return date }
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Bad date"))
+        }
+        return decoder
+    }()
 
-    func get<T: Decodable>(_ path: String, query: [String: String] = [:], authenticated: Bool = true) async throws -> T {
-        try await send(path, method: "GET", query: query, body: nil, authenticated: authenticated)
+    func get<T: Decodable>(_ path: String, query: [URLQueryItem] = [], authenticated: Bool = true) async throws -> T {
+        try await send(path, method: "GET", query: query, body: nil, authenticated: authenticated, timeout: 20)
     }
 
-    func post<T: Decodable>(_ path: String, body: [String: Any], authenticated: Bool = true) async throws -> T {
-        try await send(path, method: "POST", query: [:], body: body, authenticated: authenticated)
+    func post<T: Decodable>(_ path: String, body: [String: Any], authenticated: Bool = true,
+                            timeout: TimeInterval = 20) async throws -> T {
+        try await send(path, method: "POST", query: [], body: body, authenticated: authenticated, timeout: timeout)
     }
 
-    // MARK: - Core
+    private func send<T: Decodable>(_ path: String, method: String, query: [URLQueryItem],
+                                    body: [String: Any]?, authenticated: Bool,
+                                    timeout: TimeInterval) async throws -> T {
+        guard var components = URLComponents(url: SLConfig.apiBase.appendingPathComponent(path),
+                                             resolvingAgainstBaseURL: false) else { throw SLAPIError.network }
+        components.scheme = "https" // Never plain HTTP, whatever the base URL says.
+        if !query.isEmpty { components.queryItems = query }
+        guard let url = components.url, url.scheme == "https" else { throw SLAPIError.network }
 
-    private func send<T: Decodable>(_ path: String, method: String, query: [String: String],
-                                    body: [String: Any]?, authenticated: Bool) async throws -> T {
-        guard var components = URLComponents(string: Self.base + path) else { throw SLAPIError.insecureURL }
-        let items = query.filter { !$0.value.isEmpty }.map { URLQueryItem(name: $0.key, value: $0.value) }
-        if !items.isEmpty { components.queryItems = items }
-        guard let url = components.url, Self.isAllowed(url) else { throw SLAPIError.insecureURL }
-
-        var request = URLRequest(url: url)
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("SL_Proxy/\(Bundle.main.shortVersion) iOS", forHTTPHeaderField: "User-Agent")
+        if authenticated {
+            guard let token = KeychainManager.get(KeychainManager.Key.token) else { throw SLAPIError.unauthorized }
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            // Some hosts strip Authorization; the server also reads this header.
+            request.setValue(token, forHTTPHeaderField: "X-SL-Token")
+        }
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        }
-        if authenticated {
-            guard let stored = KeychainManager.loadSession(), !stored.isExpired else {
-                await Self.postSessionExpired()
-                throw SLAPIError.unauthorized
-            }
-            request.setValue("Bearer \(stored.token)", forHTTPHeaderField: "Authorization")
+            request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         }
 
         let data: Data
         let response: URLResponse
         do {
             (data, response) = try await session.data(for: request)
-        } catch let error as URLError where error.code == .cancelled {
-            throw error
         } catch {
-            throw SLAPIError.network(Self.friendly(error))
+            throw SLAPIError.network
         }
-        guard let http = response as? HTTPURLResponse else { throw SLAPIError.decoding }
-
-        if http.statusCode == 401, authenticated {
-            await Self.postSessionExpired()
-            throw SLAPIError.unauthorized
-        }
+        guard let http = response as? HTTPURLResponse else { throw SLAPIError.network }
+        if http.statusCode == 401 && authenticated { throw SLAPIError.unauthorized }
         guard (200..<300).contains(http.statusCode) else {
-            throw SLAPIError.server(status: http.statusCode, message: Self.serverMessage(data) ?? "Request failed (\(http.statusCode)).")
+            let message = (try? decoder.decode(SLErrorBody.self, from: data))?.message
+            throw SLAPIError.server(message: message ?? "SailorsLoot answered with HTTP \(http.statusCode).",
+                                    status: http.statusCode)
         }
         do {
-            return try Self.decoder.decode(T.self, from: data)
+            return try decoder.decode(T.self, from: data)
         } catch {
             throw SLAPIError.decoding
         }
-    }
-
-    // MARK: - Helpers
-
-    static func isAllowed(_ url: URL) -> Bool {
-        url.scheme?.lowercased() == "https" && url.host?.lowercased() == host
-    }
-
-    @MainActor private static func postSessionExpired() {
-        NotificationCenter.default.post(name: .slSessionExpired, object: nil)
-    }
-
-    private static func serverMessage(_ data: Data) -> String? {
-        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
-        return object["message"] as? String
-    }
-
-    private static func friendly(_ error: Error) -> String {
-        guard let urlError = error as? URLError else { return error.localizedDescription }
-        switch urlError.code {
-        case .notConnectedToInternet, .networkConnectionLost: return "No internet connection."
-        case .timedOut: return "The server took too long to answer."
-        case .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate,
-             .serverCertificateHasUnknownRoot, .clientCertificateRejected:
-            return "Could not make a secure connection to sailorsloot.xyz."
-        default: return urlError.localizedDescription
-        }
-    }
-
-    /// WordPress sends ISO-8601 UTC strings ("2026-11-15T14:00:00Z").
-    static let decoder: JSONDecoder = {
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        decoder.dateDecodingStrategy = .custom { decoder in
-            let string = try decoder.singleValueContainer().decode(String.self)
-            let plain = ISO8601DateFormatter()
-            plain.formatOptions = [.withInternetDateTime]
-            if let date = plain.date(from: string) { return date }
-            let fractional = ISO8601DateFormatter()
-            fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            if let date = fractional.date(from: string) { return date }
-            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Bad date \(string)"))
-        }
-        return decoder
-    }()
-
-    // MARK: - URLSessionTaskDelegate: never follow a redirect off HTTPS / off sailorsloot.xyz
-
-    func urlSession(_ session: URLSession, task: URLSessionTask,
-                    willPerformHTTPRedirection response: HTTPURLResponse,
-                    newRequest request: URLRequest) async -> URLRequest? {
-        guard let url = request.url, Self.isAllowed(url) else { return nil }
-        return request
     }
 }

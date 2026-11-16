@@ -53,17 +53,11 @@ final class NodeStore: ObservableObject {
     @Published private(set) var refreshingIDs: Set<UUID> = []
     @Published private(set) var lastGeneratedConfig: String?
     @Published var toast: String?
-    /// Expiry of configs that came from the SailorsLoot 24H list (node id -> end of the paid time).
-    /// A config past its expiry is dead by definition: it pings as timeout without touching the network.
-    @Published private(set) var expiries: [UUID: Date] = [:] {
-        didSet { persist(expiries, to: expiriesFile) }
-    }
 
     private let activeKey = "active-node-id"
     private let directory: URL
     private var nodesFile: URL { directory.appendingPathComponent("nodes.json") }
     private var subscriptionsFile: URL { directory.appendingPathComponent("subscriptions.json") }
-    private var expiriesFile: URL { directory.appendingPathComponent("expiries.json") }
     private var loading = true
 
     init() {
@@ -74,7 +68,6 @@ final class NodeStore: ObservableObject {
 
         nodes = load([ProxyNode].self, from: nodesFile) ?? []
         subscriptions = load([Subscription].self, from: subscriptionsFile) ?? []
-        expiries = load([UUID: Date].self, from: expiriesFile) ?? [:]
         if let stored = AppGroup.sharedDefaults.string(forKey: activeKey) {
             activeNodeID = UUID(uuidString: stored)
         }
@@ -114,6 +107,23 @@ final class NodeStore: ObservableObject {
         if activeNodeID == nil { activeNodeID = node.id }
     }
 
+    /// Adds (or refreshes) a purchased SailorsLoot proxy and returns the stored node. The
+    /// username is unique per purchase, so it identifies the same purchase across launches.
+    @discardableResult
+    func addPurchased(_ purchase: SLPurchased, name: String) -> ProxyNode {
+        if let index = nodes.firstIndex(where: { $0.kind == .socks && $0.username == purchase.username }) {
+            nodes[index].expiresAt = purchase.expiresAt
+            nodes[index].latencyMs = nil
+            return nodes[index]
+        }
+        var node = ProxyNode(name: name, kind: .socks, server: purchase.host, port: purchase.port)
+        node.username = purchase.username
+        node.password = purchase.password
+        node.expiresAt = purchase.expiresAt
+        nodes.append(node)
+        return node
+    }
+
     /// Replaces a server in place. Returns true when the edited server is the active one.
     @discardableResult
     func update(_ node: ProxyNode) -> Bool {
@@ -128,14 +138,12 @@ final class NodeStore: ObservableObject {
 
     func delete(_ node: ProxyNode) {
         nodes.removeAll { $0.id == node.id }
-        expiries[node.id] = nil
         if activeNodeID == node.id { activeNodeID = nodes.first?.id }
     }
 
     func deleteAll() {
         nodes.removeAll()
         subscriptions.removeAll()
-        expiries.removeAll()
         activeNodeID = nil
     }
 
@@ -144,55 +152,9 @@ final class NodeStore: ObservableObject {
     func restore(nodes restored: [ProxyNode], subscriptions restoredSubscriptions: [Subscription]) {
         nodes = restored
         subscriptions = restoredSubscriptions
-        let surviving = Set(restored.map(\.id))
-        expiries = expiries.filter { surviving.contains($0.key) }
         if activeNodeID == nil || !restored.contains(where: { $0.id == activeNodeID }) {
             activeNodeID = restored.first?.id
         }
-    }
-
-    // MARK: - SailorsLoot purchases (24H list)
-
-    /// Saves purchased SOCKS5 credentials into Configs (or finds the copy already saved), records
-    /// when the paid time ends and returns the node. The server credentials are never logged.
-    /// Re-buying or re-connecting the same session reuses the existing config instead of duplicating it.
-    @discardableResult
-    func upsertPurchased(_ purchase: PurchasedProxy) -> ProxyNode? {
-        if let existing = nodes.first(where: {
-            $0.server == purchase.host && $0.port == purchase.port && $0.username == purchase.username
-        }) {
-            expiries[existing.id] = purchase.expiresAt
-            return existing
-        }
-        let name = "SL \(purchase.title)"
-        let user = Self.urlEscape(purchase.username)
-        let pass = Self.urlEscape(purchase.password)
-        let fragment = name.addingPercentEncoding(withAllowedCharacters: .urlFragmentAllowed) ?? "SL"
-        let authority = "\(user):\(pass)@\(purchase.host):\(purchase.port)"
-        // Share-link form first; some parsers only know the `socks://` spelling.
-        for scheme in ["socks5", "socks"] {
-            let parsed = ProxyURLParser.parseMany("\(scheme)://\(authority)#\(fragment)")
-            guard var node = parsed.nodes.first else { continue }
-            node.name = name
-            nodes.append(node)
-            expiries[node.id] = purchase.expiresAt
-            return node
-        }
-        toast = "Could not save the purchased proxy"
-        return nil
-    }
-
-    func expiry(of node: ProxyNode) -> Date? { expiries[node.id] }
-
-    func isExpired(_ node: ProxyNode) -> Bool {
-        guard let date = expiries[node.id] else { return false }
-        return date <= Date()
-    }
-
-    private static func urlEscape(_ value: String) -> String {
-        var allowed = CharacterSet.alphanumerics
-        allowed.insert(charactersIn: "-._~")
-        return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
     }
 
     // MARK: - Subscriptions
@@ -262,18 +224,14 @@ final class NodeStore: ObservableObject {
 
     // MARK: - Latency
 
-    /// Latency shown next to a server; -1 means timeout / unreachable (also: SOCKS5 login refused,
-    /// session expired, tunnel not opened; see `ProxyProbe`). For the active server while
+    /// Latency shown next to a server; -1 means timeout / unreachable. For the active server while
     /// the core runs this is the real round trip of a URL test through the proxy outbound (what
     /// V2Box calls the real delay, the only number that proves the server forwards traffic). Every
     /// other server, and the active one while the core is stopped, gets the TCP connect time
     /// measured straight to the server, never through the carrier profile's APN proxy.
     func testLatency(_ node: ProxyNode) async {
         testingIDs.insert(node.id)
-        var result = -1
-        if !isExpired(node) {
-            result = await Self.latency(of: node, isActive: node.id == activeNodeID)
-        }
+        let result = await Self.latency(of: node, isActive: node.id == activeNodeID)
         testingIDs.remove(node.id)
         if let index = nodes.firstIndex(where: { $0.id == node.id }) {
             nodes[index].latencyMs = result
@@ -286,11 +244,8 @@ final class NodeStore: ObservableObject {
         testingIDs = Set(targets.map(\.id))
         await withTaskGroup(of: (UUID, Int).self) { group in
             for node in targets {
-                let expired = isExpired(node)
                 group.addTask {
-                    // An expired 6h / 24h config is dead: timeout straight away, no network call.
-                    if expired { return (node.id, -1) }
-                    return (node.id, await Self.latency(of: node, isActive: node.id == activeID))
+                    (node.id, await Self.latency(of: node, isActive: node.id == activeID))
                 }
             }
             for await (id, result) in group {
@@ -324,6 +279,8 @@ final class NodeStore: ObservableObject {
     /// A core that is not running falls through to the TCP probe; a server that does not answer
     /// either way is -1.
     nonisolated private static func latency(of node: ProxyNode, isActive: Bool) async -> Int {
+        // An expired purchase is dead whatever its gateway still answers.
+        if node.isExpired { return -1 }
         if isActive {
             switch await LatencyTester.realDelay() {
             case .delay(let ms): return ms
@@ -331,18 +288,13 @@ final class NodeStore: ObservableObject {
             case .unavailable: break
             }
         }
-        // SOCKS5 and HTTP proxies are probed end to end (login + tunnel + a real HTTP answer), so a
-        // dead or expired session reads "timeout" like in V2Box instead of the bare TCP connect time,
-        // which succeeds against any gateway that is still online. Other protocols keep the TCP probe.
-        switch node.kind {
-        case .socks, .http:
-            let target = ProxyProbe.Target(host: node.server, port: node.port,
-                                           username: node.username, password: node.password,
-                                           isHTTP: node.kind == .http)
-            return await ProxyProbe.measure(target) ?? -1
-        default:
-            return await LatencyTester.measure(host: node.server, port: node.port) ?? -1
+        // SOCKS5 / HTTP servers: do the real handshake with the credentials and fetch a URL through
+        // the proxy. A plain TCP connect to a gateway still succeeds after the account or session
+        // behind it has expired, which is how a dead server used to show a latency.
+        if node.kind == .socks || node.kind == .http, !node.tls {
+            return await LatencyTester.proxyRoundTrip(node: node) ?? -1
         }
+        return await LatencyTester.measure(host: node.server, port: node.port) ?? -1
     }
 
     // MARK: - Active config
