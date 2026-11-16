@@ -1,69 +1,68 @@
 import SwiftUI
 
-/// Confirmation before buying: details, price, balance after the purchase, then Buy & Connect.
+/// Purchase confirmation. The server does the real work (balance check, live IP check, atomic
+/// debit, 24h log) and only then hands back the credentials, which the caller saves and connects.
 struct PurchaseSheet: View {
-    let listing: SLListing
-    @EnvironmentObject private var account: SLAccountStore
-    @EnvironmentObject private var market: ProxyMarketStore
+    let proxy: MarketProxy
+    @ObservedObject var market: MarketStore
+    let onTopUp: () -> Void
+    let onPurchased: (PurchasedProxy) -> Void
+
+    @ObservedObject private var account = AccountStore.shared
     @Environment(\.dismiss) private var dismiss
-    @State private var showTopUp = false
+    @State private var isBuying = false
+    @State private var errorText: String?
 
     private var balance: Double { account.balance ?? 0 }
-    private var affordable: Bool { balance >= listing.price }
-    private var isBuying: Bool { market.buyingID == listing.id }
+    private var canAfford: Bool { balance >= proxy.price }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
-                    VStack(spacing: 6) {
-                        Text(listing.flag).font(.system(size: 54))
-                        Text(marketCountryName(listing.countryCode))
-                            .font(.title3.weight(.semibold))
-                        Text(listing.ipMasked)
-                            .font(.system(.subheadline, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                    }
-                    VStack(spacing: 0) {
-                        row("State", listing.state)
-                        row("City", listing.city)
-                        row("ZIP", listing.zip)
-                        row("ISP", listing.isp)
-                        row("Type", listing.type)
-                        if let ping = listing.pingMs { row("Ping", "\(ping) ms") }
-                    }
-                    .padding(.horizontal, 14)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-
-                    VStack(spacing: 0) {
-                        row("Price", marketPrice(listing.price), bold: true)
-                        row("Your balance", account.balanceText)
-                        row("After purchase", affordable ? marketPrice(balance - listing.price) : "Not enough")
-                    }
-                    .padding(.horizontal, 14)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-
-                    if !affordable {
-                        Text("Your wallet does not cover this proxy. Top up on sailorsloot.xyz, then come back.")
-                            .font(.footnote)
-                            .foregroundStyle(.orange)
-                            .multilineTextAlignment(.center)
-                        Button {
-                            showTopUp = true
-                        } label: {
-                            Label("Top Up Wallet", systemImage: "plus.circle")
+                    HStack(spacing: 12) {
+                        Text(proxy.flag)
+                            .font(.system(size: 30))
+                            .frame(width: 50, height: 50)
+                            .background(Color(.tertiarySystemBackground), in: Circle())
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(proxy.country).font(.headline)
+                            Text("\(proxy.city), \(proxy.state)")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            Text("\(proxy.ipMasked) • \(proxy.pingText)")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
                         }
-                        .buttonStyle(BrandButtonStyle())
-                    } else {
-                        Button {
-                            Task {
-                                if await market.buy(listing) != nil { dismiss() }
-                            }
-                        } label: {
+                        Spacer()
+                    }
+
+                    VStack(spacing: 10) {
+                        row("ISP", proxy.isp)
+                        row("ZIP", proxy.zip)
+                        row("Valid for", "24 hours")
+                        Divider().opacity(0.4)
+                        row("Price", NairaFormat.string(proxy.price), bold: true)
+                        row("Wallet", account.balanceText)
+                        row("After purchase", canAfford ? NairaFormat.string(balance - proxy.price) : "Not enough balance",
+                            tint: canAfford ? nil : .red)
+                    }
+                    .padding(14)
+                    .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                    if let errorText {
+                        Text(errorText)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .multilineTextAlignment(.center)
+                    }
+
+                    if canAfford {
+                        Button { Task { await buy() } } label: {
                             if isBuying {
-                                HStack(spacing: 8) {
+                                HStack(spacing: 10) {
                                     ProgressView().tint(.white)
-                                    Text("Checking the IP is live...")
+                                    Text("Checking the proxy is live...")
                                 }
                             } else {
                                 Label("Buy & Connect", systemImage: "bolt.fill")
@@ -71,53 +70,53 @@ struct PurchaseSheet: View {
                         }
                         .buttonStyle(BrandButtonStyle())
                         .disabled(isBuying)
-                        Text(isBuying
-                             ? "This can take up to a minute. You are only charged if the IP is live."
-                             : "The IP is checked live first and you are only charged if it works. The proxy is saved to Configs, selected and connected.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
+                    } else {
+                        Button(action: onTopUp) {
+                            Label("Top Up Wallet", systemImage: "plus.circle.fill")
+                        }
+                        .buttonStyle(BrandButtonStyle())
                     }
-                    if let message = market.errorMessage {
-                        Text(message)
-                            .font(.footnote)
-                            .foregroundStyle(.red)
-                            .multilineTextAlignment(.center)
-                    }
+
+                    Text("You are charged only after the proxy passes a live check. Credentials are saved to Configs and the connection starts automatically.")
+                        .guideText()
+                        .multilineTextAlignment(.center)
                 }
                 .padding()
             }
-            .background(Brand.background)
-            .navigationTitle("Buy proxy")
+            .navigationTitle("Confirm Purchase")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
-                        .disabled(isBuying)
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") { dismiss() }.disabled(isBuying)
                 }
             }
-            .sheet(isPresented: $showTopUp) {
-                SafariView(url: SLConfig.topUpURL).ignoresSafeArea()
-            }
-            .onChange(of: showTopUp) { open in
-                if !open { Task { await account.refreshBalance() } }
-            }
-            .onAppear { market.errorMessage = nil }
         }
         .interactiveDismissDisabled(isBuying)
-        .presentationDetents([.large])
     }
 
-    private func row(_ title: String, _ value: String, bold: Bool = false) -> some View {
+    private func row(_ title: String, _ value: String, bold: Bool = false, tint: Color? = nil) -> some View {
         HStack {
-            Text(title)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            Text(title).font(.subheadline).foregroundStyle(.secondary)
             Spacer()
-            Text(value.isEmpty ? "-" : value)
-                .font(bold ? .subheadline.weight(.bold) : .subheadline)
-                .multilineTextAlignment(.trailing)
+            Text(value)
+                .font(.subheadline.weight(bold ? .bold : .medium).monospacedDigit())
+                .foregroundStyle(tint.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.primary))
         }
-        .padding(.vertical, 10)
+    }
+
+    private func buy() async {
+        guard !isBuying else { return }
+        isBuying = true
+        errorText = nil
+        defer { isBuying = false }
+        do {
+            let purchase = try await market.purchase(proxy)
+            onPurchased(purchase)
+        } catch SLAPIError.unauthorized {
+            dismiss() // AccountStore shows the sign-in screen
+        } catch {
+            errorText = error.localizedDescription
+            await account.refreshBalance()
+        }
     }
 }

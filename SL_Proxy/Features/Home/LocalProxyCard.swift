@@ -43,8 +43,7 @@ struct LocalProxyCard: View {
                     .accessibilityLabel(revealed ? "Hide address" : "Show address")
                 }
                 Text(statusCaption)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .guideText()
                     .lineLimit(1)
             }
             Spacer(minLength: 0)

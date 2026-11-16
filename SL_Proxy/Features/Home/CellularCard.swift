@@ -34,8 +34,7 @@ struct CellularCard: View {
                         .font(.headline)
                         .lineLimit(1)
                     Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .guideText()
                         .lineLimit(2)
                 }
                 Spacer(minLength: 0)
@@ -75,8 +74,7 @@ struct CellularCard: View {
                 .buttonStyle(BrandButtonStyle())
                 if requestedAt > 0 {
                     Text("Profile downloaded. Open Settings > General > VPN & Device Management, tap the profile and Install, then connect.")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .guideText()
                 }
             } else {
                 NavigationLink {

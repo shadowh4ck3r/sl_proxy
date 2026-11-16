@@ -49,13 +49,11 @@ struct ShareConfigSheet: View {
 
                     if json == nil {
                         Text("v2ray JSON is not available for \(node.kind.title); use the URI code or the QR code.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .guideText()
                             .multilineTextAlignment(.center)
                     }
                     Text("The QR code and the copied text contain this server's credentials. Share them only with people you trust.")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .guideText()
                         .multilineTextAlignment(.center)
                 }
                 .padding()

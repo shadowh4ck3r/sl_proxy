@@ -11,6 +11,7 @@ import SwiftUI
 /// sing-box config on settings changes, finds it unchanged and leaves the running core alone.
 struct AppearanceSettingsView: View {
     @EnvironmentObject private var settings: SettingsStore
+    @ObservedObject private var placement = ConnectButtonPlacement.shared
 
     var body: some View {
         ZStack {
@@ -34,6 +35,7 @@ struct AppearanceSettingsView: View {
                     Text("Theme")
                 } footer: {
                     Text("System Default follows the iOS appearance setting. Light and Dark override it for this app only. \(settings.value.fontStyle.detail)")
+                        .guideFooter()
                 }
 
                 Section {
@@ -54,11 +56,16 @@ struct AppearanceSettingsView: View {
                     }
                     .pickerStyle(.menu)
                     Toggle("Fixed Button Position", isOn: $settings.value.fixedButtonPosition)
+                    if settings.value.fixedButtonPosition && placement.isFree {
+                        Button("Put Button Back in Dock") { placement.resetToDock() }
+                            .foregroundStyle(Brand.orange)
+                    }
                     Toggle("Show only in Home Tab", isOn: $settings.value.showButtonOnlyInHomeTab)
                 } header: {
                     Text("Navigation Style")
                 } footer: {
                     Text("\(settings.value.navigationStyle.detail) \(buttonFooter)")
+                        .guideFooter()
                 }
 
                 Section {
@@ -79,7 +86,7 @@ struct AppearanceSettingsView: View {
     private var buttonFooter: String {
         var text = "The Connect button is "
         text += settings.value.fixedButtonPosition
-            ? "docked at the bottom-left of Home instead of scrolling with the content"
+            ? "docked at the bottom-left of Home; drag it anywhere you like"
             : "part of the Home content and scrolls with it"
         text += settings.value.showButtonOnlyInHomeTab
             ? ", and is shown on the Home tab only."
@@ -98,6 +105,7 @@ struct AppearanceSettingsView: View {
         updated.fixedButtonPosition = defaults.fixedButtonPosition
         updated.showButtonOnlyInHomeTab = defaults.showButtonOnlyInHomeTab
         settings.value = updated
+        placement.resetToDock()
     }
 }
 

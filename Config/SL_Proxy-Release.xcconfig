@@ -1,0 +1,31 @@
+// Release hardening for SL_Proxy. Add this file to the project and set it as the Release
+// configuration's base configuration (Project > Info > Configurations), or copy the lines into
+// the target's Release build settings. In the GitLab pipeline pass it with:
+//   xcodebuild ... -configuration Release -xcconfig Config/SL_Proxy-Release.xcconfig
+
+// Optimised, whole-module Swift: smaller binary, less readable symbol structure.
+SWIFT_OPTIMIZATION_LEVEL = -O
+SWIFT_COMPILATION_MODE = wholemodule
+
+// Strip symbols from the shipped binary (the app, not the dSYM).
+DEPLOYMENT_POSTPROCESSING = YES
+COPY_PHASE_STRIP = YES
+STRIP_INSTALLED_PRODUCT = YES
+STRIP_STYLE = all
+STRIP_SWIFT_SYMBOLS = YES
+SEPARATE_STRIP = YES
+
+// Keep a dSYM so crash logs can still be symbolicated, but never inside the IPA.
+DEBUG_INFORMATION_FORMAT = dwarf-with-dsym
+
+// No debug-only code paths in Release.
+ENABLE_TESTABILITY = NO
+GCC_PREPROCESSOR_DEFINITIONS = $(inherited)
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited)
+
+// Strip dead code at link time.
+DEAD_CODE_STRIPPING = YES
+
+// OPTIONAL, test before shipping: removes Swift type-reflection metadata (Mirror, some
+// String(describing:) output). Smaller and harder to read, but can change logging output.
+// SWIFT_REFLECTION_METADATA_LEVEL = none

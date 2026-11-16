@@ -4,7 +4,9 @@ import SwiftUI
 /// - `navigationStyle` switches every card between the flat Erosion surface and the Katzy glass card,
 /// - `connectionButtonSize` sets the diameter of the Connect ring,
 /// - `fixedButtonPosition` docks the button (with a Ping chip under it) at the bottom-left above the
-///   tab bar, V2Box style, instead of scrolling with the content.
+///   tab bar, V2Box style, instead of scrolling with the content. The docked button can be dragged
+///   anywhere (see `DraggableConnectButton.swift`); once it stays outside the dock, the Connected /
+///   Disconnected card is hidden from Home.
 ///
 /// `SettingsStore` is an `ObservableObject`, so a change made in Appearance Settings re-renders this
 /// view immediately. `showButtonOnlyInHomeTab` is handled by `ContentView`, which adds a floating
@@ -14,6 +16,8 @@ struct HomeView: View {
     @EnvironmentObject private var nodes: NodeStore
     @EnvironmentObject private var settings: SettingsStore
     @State private var showNodePicker = false
+    @State private var showMarket = false
+    @ObservedObject private var placement = ConnectButtonPlacement.shared
     @StateObject private var exitIP = ExitIPStore()
     @StateObject private var banners = BannerStore()
 
@@ -22,6 +26,8 @@ struct HomeView: View {
     private var style: NavigationStyle { settings.value.navigationStyle }
     private var buttonSize: ConnectionButtonSize { settings.value.connectionButtonSize }
     private var isButtonFixed: Bool { settings.value.fixedButtonPosition }
+    /// The fixed button was dragged out of its dock and left outside: it replaces the status card.
+    private var isButtonFree: Bool { isButtonFixed && placement.isFree }
 
     var body: some View {
         NavigationStack {
@@ -32,7 +38,10 @@ struct HomeView: View {
                         if !banners.banners.isEmpty {
                             BannerAdCard(banners: banners.banners, style: style)
                         }
-                        connectCard
+                        MarketEntryCard(style: style) { showMarket = true }
+                        if !isButtonFree {
+                            connectCard
+                        }
                         LocalProxyCard(endpoint: tunnel.proxyEndpoint,
                                        isRunning: tunnel.isConnected,
                                        passthroughActive: tunnel.passthroughActive) {
@@ -49,14 +58,10 @@ struct HomeView: View {
                     }
                     .padding()
                 }
-                .safeAreaInset(edge: .bottom, alignment: .leading, spacing: 0) {
-                    if isButtonFixed {
-                        fixedConnectDock
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                    }
-                }
             }
+            .draggableConnectButton(visible: isButtonFixed)
             .animation(Self.layoutAnimation, value: buttonSize)
+            .animation(Self.layoutAnimation, value: isButtonFree)
             .animation(Self.layoutAnimation, value: isButtonFixed)
             .animation(.easeInOut(duration: 0.25), value: style)
             .toolbar {
@@ -64,6 +69,7 @@ struct HomeView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showNodePicker) { NodePickerSheet() }
+            .fullScreenCover(isPresented: $showMarket) { MarketView() }
             .task { await banners.refresh() }
             // Flag and masked exit IP of the running connection; cleared on disconnect.
             .task(id: "\(tunnel.isConnected)-\(nodes.activeNodeID?.uuidString ?? "")") {
@@ -79,8 +85,8 @@ struct HomeView: View {
 
     // MARK: - Connect button
 
-    /// The one Connect ring on Home; lives in `connectCard` or in `fixedConnectDock` depending on
-    /// the Fixed Button Position setting.
+    /// The one Connect ring on Home; lives in `connectCard`, or in the draggable dock when Fixed
+    /// Button Position is on.
     private var connectRing: some View {
         ConnectRing(
             size: buttonSize,
@@ -91,18 +97,6 @@ struct HomeView: View {
             tunnel.toggle()
         }
         .disabled(tunnel.isBusy)
-    }
-
-    /// Connect button docked at the bottom-left above the tab bar while Fixed Button Position is
-    /// on, with the Ping chip under it. The Home content scrolls above it (safe-area inset), so it
-    /// never covers a card.
-    private var fixedConnectDock: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            connectRing
-            PingChip()
-        }
-        .padding(.leading, 16)
-        .padding(.bottom, 8)
     }
 
     // MARK: - Cards
@@ -140,7 +134,7 @@ struct HomeView: View {
                     .foregroundStyle(.secondary)
             } else {
                 Text(nodes.activeNode == nil ? "Import a server in Configs to get started" : "Tap to connect")
-                    .font(.subheadline)
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
             }
         }
@@ -193,8 +187,7 @@ struct HomeView: View {
             }
             .pickerStyle(.segmented)
             Text(settings.value.routingMode.detail)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .guideText()
         }
         .frame(maxWidth: .infinity)
         .navigationStyleCard(style, cornerRadius: 18)
@@ -338,43 +331,60 @@ struct PingChip: View {
     }
 }
 
-/// Connect button with the Ping chip under it, pinned at the bottom-left above the tab bar on the
-/// non-Home tabs while Appearance Settings > "Show only in Home Tab" is off. It is only as big as
-/// the chosen Connection Button Size, so it no longer takes a full-width bar.
+/// Kept for call sites that still name it: the same draggable Connect button (see `ConnectDock`).
 struct FloatingConnectButton: View {
-    @EnvironmentObject private var tunnel: TunnelController
-    @EnvironmentObject private var settings: SettingsStore
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ConnectRing(
-                size: settings.value.connectionButtonSize,
-                style: settings.value.navigationStyle,
-                isConnected: tunnel.isConnected,
-                isTransitioning: tunnel.isTransitioning
-            ) {
-                tunnel.toggle()
-            }
-            .disabled(tunnel.isBusy)
-            PingChip()
-        }
-        .padding(.leading, 16)
-        .padding(.bottom, 8)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Connect button, \(tunnel.statusText)")
+        ConnectDock()
+            .padding(.leading, 16)
+            .padding(.bottom, 8)
     }
 }
 
 extension View {
-    /// Pins `FloatingConnectButton` at the bottom-left above the tab bar when `visible` is true
-    /// (Appearance Settings > "Show only in Home Tab" off). The toggle animates it in and out.
+    /// Shows the draggable Connect button on the non-Home tabs when Appearance Settings >
+    /// "Show only in Home Tab" is off. It uses the same saved position as the Home button.
     func floatingConnectButton(visible: Bool) -> some View {
-        safeAreaInset(edge: .bottom, alignment: .leading, spacing: 0) {
-            if visible {
-                FloatingConnectButton()
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+        draggableConnectButton(visible: visible)
+    }
+}
+
+/// Home card that opens the SailorsLoot proxy market: wallet balance when signed in, a
+/// "Connect SailorsLoot Account" prompt when not.
+struct MarketEntryCard: View {
+    let style: NavigationStyle
+    let action: () -> Void
+    @ObservedObject private var account = AccountStore.shared
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: "bag.fill")
+                    .font(.title3)
+                    .foregroundStyle(Brand.gradient)
+                    .frame(width: 32)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Proxy Market")
+                        .font(.subheadline.weight(.semibold))
+                    Text(account.isLoggedIn ? "Buy a live IP and connect in one tap" : "Connect SailorsLoot Account")
+                        .guideText()
+                }
+                Spacer(minLength: 8)
+                if account.isLoggedIn {
+                    Text(account.balanceText)
+                        .font(.footnote.weight(.bold).monospacedDigit())
+                        .foregroundStyle(Brand.orange)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Brand.gold.opacity(0.16), in: Capsule())
+                }
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
             }
+            .frame(maxWidth: .infinity)
+            .navigationStyleCard(style, cornerRadius: 18, padding: 14)
         }
-        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: visible)
+        .buttonStyle(.plain)
+        .task { if account.isLoggedIn { await account.refreshBalance() } }
     }
 }
