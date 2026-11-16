@@ -43,6 +43,7 @@ struct AccountView: View {
                         }
                     } footer: {
                         Text("This revokes the login on the server and removes it from this iPhone.")
+                    .font(.caption2)
                     }
                 } else {
                     Section {

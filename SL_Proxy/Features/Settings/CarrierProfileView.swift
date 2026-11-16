@@ -33,6 +33,7 @@ struct CarrierProfileView: View {
                     Text("Auto-detect")
                 } footer: {
                     Text(detectionFooter)
+                    .font(.caption2)
                 }
 
                 Section {
@@ -46,6 +47,7 @@ struct CarrierProfileView: View {
                     Text("Profile carrier")
                 } footer: {
                     Text("Automatic follows the SIM match above. Pick a carrier by hand when iOS hides the codes or you use a different SIM for data.")
+                    .font(.caption2)
                 }
 
                 Section {
@@ -94,6 +96,7 @@ struct CarrierProfileView: View {
                     Text("Install Your Carrier Profile")
                 } footer: {
                     Text(installFooter)
+                    .font(.caption2)
                 }
 
                 Section {
@@ -106,6 +109,7 @@ struct CarrierProfileView: View {
                     Text("Reset APN")
                 } footer: {
                     Text(resetFooter)
+                    .font(.caption2)
                 }
 
                 Section {
@@ -124,6 +128,7 @@ struct CarrierProfileView: View {
                     Text("Profile source")
                 } footer: {
                     Text("Directory the four .mobileconfig files are downloaded from. The default is the latest build_ipa artifact of feature/advanced-plus-ui; the ?job= parameter is added automatically for GitLab artifact URLs.")
+                    .font(.caption2)
                 }
 
                 VerificationSection(verifier: tunnel.verifier, path: tunnel.path, endpoint: tunnel.proxyEndpoint)
@@ -218,6 +223,7 @@ private struct VerificationSection: View {
             Text("Profile verification")
         } footer: {
             Text(footer)
+                    .font(.caption2)
         }
     }
 

@@ -28,18 +28,18 @@ struct BannerAdCard: View {
 
 private struct BannerRow: View {
     let banner: BannerAd
+    /// Starts from the cache, so a logo seen before shows on the first frame.
+    @State private var image: UIImage?
+    @State private var failed = false
+
+    init(banner: BannerAd) {
+        self.banner = banner
+        _image = State(initialValue: BannerImageCache.shared.cached(banner.logo))
+    }
 
     var body: some View {
         HStack(spacing: 12) {
-            AsyncImage(url: URL(string: banner.logo)) { phase in
-                if let image = phase.image {
-                    image.resizable().scaledToFit()
-                } else {
-                    Image(systemName: "megaphone.fill")
-                        .font(.title2)
-                        .foregroundStyle(Brand.gradient)
-                }
-            }
+            logo
             .frame(width: 52, height: 52)
             .background(Color.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -71,5 +71,31 @@ private struct BannerRow: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .padding(.bottom, 8)
+        .task(id: banner.logo) {
+            guard image == nil else { return }
+            failed = false
+            if let loaded = await BannerImageCache.shared.load(banner.logo) {
+                image = loaded
+            } else {
+                failed = true
+            }
+        }
+    }
+
+    /// The cached logo; a neutral spinner while it downloads; the megaphone only when it failed.
+    @ViewBuilder
+    private var logo: some View {
+        if let image {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFit()
+        } else if failed {
+            Image(systemName: "megaphone.fill")
+                .font(.title2)
+                .foregroundStyle(Brand.gradient)
+        } else {
+            ProgressView()
+                .controlSize(.small)
+        }
     }
 }

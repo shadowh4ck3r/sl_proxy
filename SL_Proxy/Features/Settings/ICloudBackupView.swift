@@ -7,6 +7,7 @@ struct ICloudBackupView: View {
     @EnvironmentObject private var backup: ICloudBackupStore
     @EnvironmentObject private var nodes: NodeStore
     @EnvironmentObject private var settings: SettingsStore
+    @State private var pendingRestore: BackupSnapshot?
 
     var body: some View {
         ZStack {
@@ -33,6 +34,50 @@ struct ICloudBackupView: View {
                     Text("Status")
                 } footer: {
                     Text(statusFooter)
+                    .font(.caption2)
+                }
+
+                Section {
+                    Toggle("Auto Sync", isOn: $backup.autoSync)
+                } footer: {
+                    Text(backup.autoSync
+                         ? "Changes are uploaded by themselves and a newer backup from another device is applied automatically."
+                         : "Nothing is uploaded or applied until you tap Back Up Now or restore a backup below.")
+                    .font(.caption2)
+                }
+
+                Section {
+                    if backup.history.isEmpty {
+                        Text("No backups yet. Tap Back Up Now to save one.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(backup.history, id: \.savedAt) { snapshot in
+                        Button {
+                            pendingRestore = snapshot
+                        } label: {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(snapshot.savedAt.formatted(date: .abbreviated, time: .shortened))
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                Text("\(snapshot.deviceName) \u{2022} \(snapshot.content.nodes.count) servers \u{2022} \(snapshot.content.subscriptions.count) subscriptions")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .swipeActions {
+                            Button(role: .destructive) {
+                                backup.deleteBackup(snapshot)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Backups")
+                } footer: {
+                    Text("Tap a backup to restore it. The last \(ICloudBackupStore.maxHistory) are kept: one per manual backup, plus one every few hours while Auto Sync is on.")
+                    .font(.caption2)
                 }
 
                 Section {
@@ -45,9 +90,22 @@ struct ICloudBackupView: View {
                     Text("What Is Backed Up")
                 } footer: {
                     Text(coverageFooter)
+                    .font(.caption2)
                 }
             }
             .scrollContentBackground(.hidden)
+        }
+        .confirmationDialog(
+            "Restore this backup?",
+            isPresented: Binding(get: { pendingRestore != nil }, set: { if !$0 { pendingRestore = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Restore", role: .destructive) {
+                if let snapshot = pendingRestore { backup.restore(snapshot) }
+                pendingRestore = nil
+            }
+        } message: {
+            Text("Your current servers, subscriptions and options are replaced by this backup.")
         }
         .navigationTitle("iCloud Backup")
         .navigationBarTitleDisplayMode(.inline)

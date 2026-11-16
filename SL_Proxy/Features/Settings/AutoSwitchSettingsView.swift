@@ -23,6 +23,7 @@ struct AutoSwitchSettingsView: View {
                     Toggle("Auto Node Switching", isOn: $settings.value.autoNodeSwitching)
                 } footer: {
                     Text("When on, all imported nodes are grouped into a sing-box urltest outbound. The engine pings each node and routes traffic through the fastest one automatically.")
+                    .font(.caption2)
                 }
 
                 if settings.value.autoNodeSwitching {
@@ -44,6 +45,7 @@ struct AutoSwitchSettingsView: View {
                         Text("Latency Test")
                     } footer: {
                         Text("The engine fetches this URL through each node to measure latency. A 204 endpoint is ideal.")
+                    .font(.caption2)
                     }
 
                     // Interval stepper
@@ -62,6 +64,7 @@ struct AutoSwitchSettingsView: View {
                         }
                     } footer: {
                         Text("How often the engine re-tests all nodes. Shorter intervals keep the selection fresh but use more data.")
+                    .font(.caption2)
                     }
 
                     // Live latency list
@@ -100,6 +103,7 @@ struct AutoSwitchSettingsView: View {
                         }
                     } footer: {
                         Text("Tap \"Test All\" to measure TCP connect latency to each node right now. The engine uses its own internal test during operation.")
+                    .font(.caption2)
                     }
                 }
             }

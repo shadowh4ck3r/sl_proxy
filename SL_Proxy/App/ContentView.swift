@@ -5,30 +5,37 @@ struct ContentView: View {
     @EnvironmentObject private var settings: SettingsStore
     @EnvironmentObject private var tunnel: TunnelController
 
-    /// Appearance Settings > "Show only in Home Tab" off: the other tabs get a floating Connect
-    /// button. Read from the global `SettingsStore`, so flipping the toggle updates every tab at once.
-    private var showsConnectButtonEverywhere: Bool {
-        !settings.value.showButtonOnlyInHomeTab
+    private enum AppTab: Hashable { case home, configs, rules, proxies, settings }
+
+    @State private var tab: AppTab = .home
+
+    /// Whether the draggable Connect button floats over the current tab. On Home it floats when
+    /// Fixed Button Position is on (otherwise the button lives in the Home card); on the other tabs
+    /// it floats unless "Show only in Home Tab" is on.
+    private var connectButtonVisible: Bool {
+        tab == .home ? settings.value.fixedButtonPosition : !settings.value.showButtonOnlyInHomeTab
     }
 
     var body: some View {
-        TabView {
+        TabView(selection: $tab) {
             HomeView()
                 .tabItem { Label("Home", systemImage: "bolt.shield") }
+                .tag(AppTab.home)
             ConfigsView()
-                .floatingConnectButton(visible: showsConnectButtonEverywhere)
                 .tabItem { Label("Configs", systemImage: "server.rack") }
+                .tag(AppTab.configs)
             RulesView()
-                .floatingConnectButton(visible: showsConnectButtonEverywhere)
                 .tabItem { Label("Rules", systemImage: "arrow.triangle.branch") }
+                .tag(AppTab.rules)
             MarketView()
-                .floatingConnectButton(visible: showsConnectButtonEverywhere)
                 .tabItem { Label("Proxies", systemImage: "globe") }
+                .tag(AppTab.proxies)
             SettingsView()
-                .floatingConnectButton(visible: showsConnectButtonEverywhere)
                 .tabItem { Label("Settings", systemImage: "gearshape") }
+                .tag(AppTab.settings)
         }
         .tint(Brand.orange)
+        .overlay { DraggableConnectOverlay(visible: connectButtonVisible) }
         .overlay(alignment: .top) {
             if let toast = nodes.toast {
                 ToastView(text: toast)

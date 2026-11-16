@@ -27,6 +27,7 @@ struct AddSubscriptionSheet: View {
                         Text("Subscription")
                     } footer: {
                         Text("Base64 lists and plain lists of share links are supported. Servers are replaced on every refresh.")
+                    .font(.caption2)
                     }
                     Section {
                         Button {

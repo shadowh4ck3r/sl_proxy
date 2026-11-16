@@ -101,7 +101,7 @@ struct PurchasedProxyCard: View {
             let remaining = max(0, purchase.expiresAt.timeIntervalSince(context.date))
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(purchase.city.isEmpty ? purchase.country : "\(purchase.city), \(purchase.country)")
+                    Text(Self.title(for: purchase))
                         .font(.subheadline.weight(.semibold))
                         .lineLimit(1)
                     Text(purchase.ipMasked)
@@ -128,6 +128,17 @@ struct PurchasedProxyCard: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .navigationStyleCard(settings.value.navigationStyle, cornerRadius: 18, padding: 14)
+        }
+    }
+
+    /// "Los Angeles, US", just the country or city, or a generic name when the server did not
+    /// resolve a location for this purchase.
+    static func title(for purchase: SLPurchased) -> String {
+        switch (purchase.city.isEmpty, purchase.country.isEmpty) {
+        case (false, false): return "\(purchase.city), \(purchase.country)"
+        case (false, true): return purchase.city
+        case (true, false): return purchase.country
+        case (true, true): return "SailorsLoot proxy"
         }
     }
 

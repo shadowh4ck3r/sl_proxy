@@ -1,11 +1,9 @@
 import SwiftUI
 
+/// Settings, laid out like V2Box: the account row, then one stacked list of pages. Each page holds
+/// one topic (Appearance, Proxy & Engine, DNS, Subscriptions, Advanced, Diagnostics, Logs, About).
 struct SettingsView: View {
-    @EnvironmentObject private var settings: SettingsStore
-    @EnvironmentObject private var nodes: NodeStore
-    @EnvironmentObject private var tunnel: TunnelController
     @EnvironmentObject private var account: SLAccountStore
-    @State private var confirmDeleteAll = false
     @State private var showAccount = false
 
     var body: some View {
@@ -18,8 +16,10 @@ struct SettingsView: View {
                             showAccount = true
                         } label: {
                             HStack {
-                                Label(account.isLoggedIn ? "SailorsLoot Account" : "Connect SailorsLoot Account",
-                                      systemImage: "person.crop.circle")
+                                SettingsRow(
+                                    title: account.isLoggedIn ? "SailorsLoot Account" : "Connect SailorsLoot Account",
+                                    systemImage: "person.crop.circle"
+                                )
                                 Spacer()
                                 Text(account.isLoggedIn ? account.balanceText : "")
                                     .font(.footnote.monospacedDigit())
@@ -30,141 +30,118 @@ struct SettingsView: View {
                             }
                         }
                         .foregroundStyle(.primary)
-                        NavigationLink {
-                            LogsView(embedded: true)
-                        } label: {
-                            Label("Logs", systemImage: "doc.text.magnifyingglass")
-                        }
                     }
 
                     Section {
-                        DNSField(title: "Remote DNS (through proxy)", text: $settings.value.remoteDNS, presets: DNSPreset.remote)
-                        DNSField(title: "Local DNS (direct)", text: $settings.value.localDNS, presets: DNSPreset.local)
-                    } header: {
-                        Text("DNS")
-                    } footer: {
-                        Text("Remote DNS resolves proxied traffic; local DNS resolves the proxy server and bypassed traffic.")
-                    }
-
-                    Section {
-                        PortField(
-                            title: "Listen port",
-                            port: $settings.value.localProxyPort,
-                            presets: AppSettings.localProxyPortOptions
-                        )
-                        Toggle("Try other ports if busy", isOn: $settings.value.localProxyPortFallback)
-                        LabeledContent("Listening on", value: tunnel.isConnected ? tunnel.proxyEndpoint : "Not running")
-                    } header: {
-                        Text("Local proxy")
-                    } footer: {
-                        Text(localProxyFooter)
-                    }
-
-                    Section {
-                        Toggle("IPv6", isOn: $settings.value.ipv6Enabled)
-                        Toggle("Traffic sniffing", isOn: $settings.value.sniffing)
-                    } header: {
-                        Text("Engine")
-                    } footer: {
-                        Text("MTU, network stack and strict route only apply to the system VPN build; the user-space engine serves a plain HTTP + SOCKS5 listener.")
-                    }
-
-                    Section {
-                        Toggle("Connect on launch", isOn: $settings.value.autoConnectOnLaunch)
-                        Toggle("Keep running in background", isOn: $settings.value.keepAliveInBackground)
-                        Toggle("Alert if SL_Proxy stops", isOn: $settings.value.engineWatchdog)
-                        LabeledContent("Background keep-alive", value: tunnel.backgroundKeepAliveActive ? "Active" : "Off")
-                        Picker("Log level", selection: $settings.value.logLevel) {
-                            ForEach(AppSettings.logLevels, id: \.self) { level in
-                                Text(level).tag(level)
-                            }
+                        NavigationLink { AppearanceSettingsView() } label: {
+                            SettingsRow(title: "Appearance", systemImage: "circle.lefthalf.filled")
+                        }
+                        NavigationLink { ProxyEngineSettingsView() } label: {
+                            SettingsRow(title: "Proxy & Engine", systemImage: "point.3.connected.trianglepath.dotted")
+                        }
+                        NavigationLink { DNSSettingsView() } label: {
+                            SettingsRow(title: "DNS Settings", systemImage: "network")
+                        }
+                        NavigationLink { SubscriptionSettingsView() } label: {
+                            SettingsRow(title: "Subscription Settings", systemImage: "link")
+                        }
+                        NavigationLink { AdvancedSettingsView() } label: {
+                            SettingsRow(title: "Advanced Settings", systemImage: "slider.horizontal.3")
+                        }
+                        NavigationLink { DiagnosticsView() } label: {
+                            SettingsRow(title: "Diagnostics", systemImage: "waveform.path.ecg")
+                        }
+                        NavigationLink { LogsView(embedded: true) } label: {
+                            SettingsRow(title: "Logs", systemImage: "doc.text.magnifyingglass")
+                        }
+                        NavigationLink { AboutView() } label: {
+                            SettingsRow(title: "About", systemImage: "info.circle")
                         }
                     } header: {
-                        Text("Behaviour")
-                    } footer: {
-                        Text("Keep running in background plays a muted silent track and holds a background task while the proxy is on, so iOS does not suspend the \(tunnel.proxyEndpoint) listener when you switch apps or lock the screen. It switches off together with the proxy. Alert if SL_Proxy stops keeps a notification scheduled that is pushed back every few seconds; if iOS closes the app it fires, because the cellular profile cannot reach the proxy until you reopen SL_Proxy.")
-                    }
-
-                    Section("Advanced") {
-                        NavigationLink("Appearance Settings") {
-                            AppearanceSettingsView()
-                        }
-                        NavigationLink("Subscription Settings") {
-                            SubscriptionSettingsView()
-                        }
-                        NavigationLink("Advanced & Pro Settings") {
-                            AdvancedSettingsView()
-                        }
-                        NavigationLink("View generated sing-box config") {
-                            ConfigPreviewView()
-                        }
-                        .disabled(nodes.activeNode == nil)
-                        Button("Reset settings to defaults") { settings.reset() }
-                        Button("Delete all servers and subscriptions", role: .destructive) {
-                            confirmDeleteAll = true
-                        }
-                    }
-
-                    Section {
-                        LabeledContent("Mode", value: "User-space loopback")
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Proxy address (HTTP + SOCKS5)")
-                            Text(tunnel.proxyEndpoint)
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                                .textSelection(.enabled)
-                        }
-                        if tunnel.isOnFallbackPort {
-                            LabeledContent("Port", value: "Fallback (\(settings.value.effectiveLocalProxyPort) was busy)")
-                        }
-                        LabeledContent("Engine", value: tunnel.statusText)
-                        if let server = tunnel.activeServerName {
-                            LabeledContent("Routing through", value: server)
-                        }
-                    } header: {
-                        Text("Diagnostics")
-                    } footer: {
-                        Text("sing-box runs inside the app; no Network Extension, VPN profile or App Group is involved. Point Wi-Fi > Configure Proxy > Manual (or an app's SOCKS5 option) at the proxy address and keep SL_Proxy open while you use it.")
-                    }
-
-                    Section("About") {
-                        LabeledContent("Version", value: "\(Bundle.main.shortVersion) (\(Bundle.main.buildNumber))")
-                        LabeledContent("Core", value: "sing-box 1.11 (user-space)")
-                        if let site = URL(string: "https://sailorsloot.xyz") {
-                            Link("sailorsloot.xyz", destination: site)
-                        }
-                    }
-
-                    Section("Credits") {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("A Sailorsloot Project © 2026")
-                                .font(.headline)
-                                .foregroundStyle(Brand.gradient)
-                            creditLine("@poshmipo", role: "Senior Developer")
-                            creditLine("@Toolsbrain/Toolsbrain13723", role: "Developer")
-                            creditLine("@9god", role: "Creator / Software manager")
-                            creditLine("@cptkat", role: "UI designer / Developer")
-                            creditLine("@ShadowH4ck3r", role: "uicache / logs input")
-                            creditLine("@XYZ Aro El_ArbustoGato III", role: "Proxy Address Engine Config Creator")
-                        }
-                        .padding(.vertical, 4)
+                        Text("Settings")
                     }
                 }
                 .scrollContentBackground(.hidden)
             }
             .navigationTitle("Settings")
             .sheet(isPresented: $showAccount) { AccountView() }
-            .confirmationDialog(
-                "Delete all servers and subscriptions?",
-                isPresented: $confirmDeleteAll,
-                titleVisibility: .visible
-            ) {
-                Button("Delete all", role: .destructive) {
-                    nodes.deleteAll()
-                    Task { await tunnel.stop() }
+        }
+    }
+}
+
+/// One row of the stacked Settings list: a small brand-coloured icon tile and the title.
+struct SettingsRow: View {
+    let title: String
+    let systemImage: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Color.white)
+                .frame(width: 28, height: 28)
+                .background(Brand.gradient, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            Text(title)
+        }
+    }
+}
+
+// MARK: - Proxy & Engine
+
+private struct ProxyEngineSettingsView: View {
+    @EnvironmentObject private var settings: SettingsStore
+    @EnvironmentObject private var tunnel: TunnelController
+
+    var body: some View {
+        ZStack {
+            Brand.background
+            Form {
+                Section {
+                    PortField(
+                        title: "Listen port",
+                        port: $settings.value.localProxyPort,
+                        presets: AppSettings.localProxyPortOptions
+                    )
+                    Toggle("Try other ports if busy", isOn: $settings.value.localProxyPortFallback)
+                    LabeledContent("Listening on", value: tunnel.isConnected ? tunnel.proxyEndpoint : "Not running")
+                } header: {
+                    Text("Local proxy")
+                } footer: {
+                    Text(localProxyFooter)
+                        .font(.caption2)
+                }
+
+                Section {
+                    Toggle("IPv6", isOn: $settings.value.ipv6Enabled)
+                    Toggle("Traffic sniffing", isOn: $settings.value.sniffing)
+                } header: {
+                    Text("Engine")
+                } footer: {
+                    Text("MTU, network stack and strict route only apply to the system VPN build; the user-space engine serves a plain HTTP + SOCKS5 listener.")
+                        .font(.caption2)
+                }
+
+                Section {
+                    Toggle("Connect on launch", isOn: $settings.value.autoConnectOnLaunch)
+                    Toggle("Keep running in background", isOn: $settings.value.keepAliveInBackground)
+                    Toggle("Alert if SL_Proxy stops", isOn: $settings.value.engineWatchdog)
+                    LabeledContent("Background keep-alive", value: tunnel.backgroundKeepAliveActive ? "Active" : "Off")
+                    Picker("Log level", selection: $settings.value.logLevel) {
+                        ForEach(AppSettings.logLevels, id: \.self) { level in
+                            Text(level).tag(level)
+                        }
+                    }
+                } header: {
+                    Text("Behaviour")
+                } footer: {
+                    Text("Keep running in background plays a muted silent track so iOS does not suspend the listener when you switch apps or lock the screen. Alert if SL_Proxy stops sends a notification if iOS closes the app, because the cellular profile cannot reach the proxy until you reopen SL_Proxy.")
+                        .font(.caption2)
                 }
             }
+            .scrollContentBackground(.hidden)
         }
+        .navigationTitle("Proxy & Engine")
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     private var localProxyFooter: String {
@@ -173,26 +150,103 @@ struct SettingsView: View {
             + "The default is \(AppSettings.defaultLocalProxyPort); 1080 is avoided because other proxy tools usually hold it. "
             + "Ports \(range.lowerBound) to \(range.upperBound) are accepted; anything else falls back to \(AppSettings.defaultLocalProxyPort)."
         if settings.value.localProxyPortFallback {
-            text += " When the port is busy, the presets are tried in order, then the next free port upward; the address in use is shown above and on Home."
+            text += " When the port is busy, the presets are tried in order, then the next free port upward."
         }
         if tunnel.isOnFallbackPort, let port = tunnel.activePort {
             text += " Currently on \(port) because \(settings.value.effectiveLocalProxyPort) was in use."
         }
         return text
     }
+}
 
-    private func creditLine(_ handle: String, role: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(handle)
-                .font(.subheadline.weight(.semibold))
-            Text("(\(role))")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+// MARK: - DNS
+
+private struct DNSSettingsView: View {
+    @EnvironmentObject private var settings: SettingsStore
+
+    var body: some View {
+        ZStack {
+            Brand.background
+            Form {
+                Section {
+                    DNSField(title: "Remote DNS (through proxy)", text: $settings.value.remoteDNS, presets: DNSPreset.remote)
+                    DNSField(title: "Local DNS (direct)", text: $settings.value.localDNS, presets: DNSPreset.local)
+                } footer: {
+                    Text("Remote DNS resolves proxied traffic; local DNS resolves the proxy server and bypassed traffic.")
+                        .font(.caption2)
+                }
+            }
+            .scrollContentBackground(.hidden)
+        }
+        .navigationTitle("DNS Settings")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// MARK: - Diagnostics
+
+private struct DiagnosticsView: View {
+    @EnvironmentObject private var settings: SettingsStore
+    @EnvironmentObject private var nodes: NodeStore
+    @EnvironmentObject private var tunnel: TunnelController
+    @State private var confirmDeleteAll = false
+
+    var body: some View {
+        ZStack {
+            Brand.background
+            Form {
+                Section {
+                    LabeledContent("Mode", value: "User-space loopback")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Proxy address (HTTP + SOCKS5)")
+                        Text(tunnel.proxyEndpoint)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                    if tunnel.isOnFallbackPort {
+                        LabeledContent("Port", value: "Fallback (\(settings.value.effectiveLocalProxyPort) was busy)")
+                    }
+                    LabeledContent("Engine", value: tunnel.statusText)
+                    if let server = tunnel.activeServerName {
+                        LabeledContent("Routing through", value: server)
+                    }
+                    NavigationLink("View generated sing-box config") {
+                        ConfigPreviewView()
+                    }
+                    .disabled(nodes.activeNode == nil)
+                } footer: {
+                    Text("sing-box runs inside the app; no Network Extension, VPN profile or App Group is involved. Keep SL_Proxy open while you use the proxy address.")
+                        .font(.caption2)
+                }
+
+                Section {
+                    Button("Reset settings to defaults") { settings.reset() }
+                    Button("Delete all servers and subscriptions", role: .destructive) {
+                        confirmDeleteAll = true
+                    }
+                } header: {
+                    Text("Data")
+                }
+            }
+            .scrollContentBackground(.hidden)
+        }
+        .navigationTitle("Diagnostics")
+        .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog(
+            "Delete all servers and subscriptions?",
+            isPresented: $confirmDeleteAll,
+            titleVisibility: .visible
+        ) {
+            Button("Delete all", role: .destructive) {
+                nodes.deleteAll()
+                Task { await tunnel.stop() }
+            }
         }
     }
 }
 
-private struct DNSField: View {
+struct DNSField: View {
     let title: String
     @Binding var text: String
     let presets: [DNSPreset]
@@ -222,7 +276,7 @@ private struct DNSField: View {
 }
 
 /// Numeric port editor with a preset menu, mirroring `DNSField`.
-private struct PortField: View {
+struct PortField: View {
     let title: String
     @Binding var port: Int
     let presets: [Int]

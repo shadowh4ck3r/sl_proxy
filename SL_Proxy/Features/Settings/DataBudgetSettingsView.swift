@@ -26,6 +26,7 @@ private struct DataBudgetForm: View {
                     Toggle("Data Budget", isOn: $settings.value.dataBudgetEnabled)
                 } footer: {
                     Text("Counts the bytes the proxy moves while this device is on cellular (Wi-Fi traffic is ignored). Usage is kept across launches and resets at midnight and on the first of the month.")
+                    .font(.caption2)
                 }
 
                 Section {
@@ -35,6 +36,7 @@ private struct DataBudgetForm: View {
                     Text("Caps (MB)")
                 } footer: {
                     Text("1 MB = 1,000,000 bytes, matching the totals shown on Home. Enter 0 to turn a cap off.")
+                    .font(.caption2)
                 }
 
                 Section {
@@ -51,6 +53,7 @@ private struct DataBudgetForm: View {
                     Text("When a cap is reached")
                 } footer: {
                     Text(actionsFooter)
+                    .font(.caption2)
                 }
 
                 Section {
@@ -73,6 +76,7 @@ private struct DataBudgetForm: View {
                     Text("Cellular usage")
                 } footer: {
                     Text(usageFooter)
+                    .font(.caption2)
                 }
             }
             .scrollContentBackground(.hidden)

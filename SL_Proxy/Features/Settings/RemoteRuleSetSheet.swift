@@ -27,6 +27,7 @@ struct AddRemoteRuleSetSheet: View {
                         Text("Tag")
                     } footer: {
                         Text("A short identifier used in the sing-box config. Must be unique.")
+                    .font(.caption2)
                     }
 
                     Section {
@@ -38,6 +39,7 @@ struct AddRemoteRuleSetSheet: View {
                         Text("URL")
                     } footer: {
                         Text("Direct link to a compiled .srs (sing-box rule-set binary) file. The engine downloads and caches it on first connect.")
+                    .font(.caption2)
                     }
                 }
                 .scrollContentBackground(.hidden)

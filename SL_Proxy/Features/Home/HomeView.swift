@@ -32,7 +32,11 @@ struct HomeView: View {
                         if !banners.banners.isEmpty {
                             BannerAdCard(banners: banners.banners, style: style)
                         }
-                        connectCard
+                        if isButtonFixed {
+                            statusPill
+                        } else {
+                            connectCard
+                        }
                         LocalProxyCard(endpoint: tunnel.proxyEndpoint,
                                        isRunning: tunnel.isConnected,
                                        passthroughActive: tunnel.passthroughActive) {
@@ -48,12 +52,6 @@ struct HomeView: View {
                         }
                     }
                     .padding()
-                }
-                .safeAreaInset(edge: .bottom, alignment: .leading, spacing: 0) {
-                    if isButtonFixed {
-                        fixedConnectDock
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                    }
                 }
             }
             .animation(Self.layoutAnimation, value: buttonSize)
@@ -93,16 +91,32 @@ struct HomeView: View {
         .disabled(tunnel.isBusy)
     }
 
-    /// Connect button docked at the bottom-left above the tab bar while Fixed Button Position is
-    /// on, with the Ping chip under it. The Home content scrolls above it (safe-area inset), so it
-    /// never covers a card.
-    private var fixedConnectDock: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            connectRing
-            PingChip()
+    /// One line of status shown instead of the big card while the Connect button floats (Fixed
+    /// Button Position on): state, uptime and the exit flag with a masked IP.
+    private var statusPill: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(tunnel.isConnected ? Color.green : Color.gray)
+                .frame(width: 8, height: 8)
+            Text(tunnel.statusText)
+                .font(.footnote.weight(.semibold))
+            if let since = tunnel.connectedSince {
+                Text(since, style: .timer)
+                    .font(.footnote.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            if tunnel.isConnected, let info = exitIP.info {
+                Text("\(info.flag) \(info.maskedIP)")
+                    .font(.footnote.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
         }
-        .padding(.leading, 16)
-        .padding(.bottom, 8)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(Brand.gradient, lineWidth: 1).opacity(0.5))
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Cards

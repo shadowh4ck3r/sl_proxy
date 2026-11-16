@@ -78,6 +78,7 @@ struct ManualConfigSheet: View {
             Text("Server")
         } footer: {
             Text(kindHint)
+                    .font(.caption2)
         }
     }
 
@@ -92,6 +93,7 @@ struct ManualConfigSheet: View {
                 Text("Authentication")
             } footer: {
                 Text("Leave both fields empty when the SOCKS5 server does not require a login.")
+                    .font(.caption2)
             }
 
         case .http:
@@ -188,6 +190,7 @@ struct ManualConfigSheet: View {
                 Text("Interface")
             } footer: {
                 Text("Comma separated lists. Reserved bytes are only needed by some providers (for example WARP).")
+                    .font(.caption2)
             }
         }
     }

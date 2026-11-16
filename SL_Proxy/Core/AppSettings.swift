@@ -427,6 +427,10 @@ struct AppSettings: Codable, Equatable {
     var fixedButtonPosition = false
     /// Show the Connect button on the Home tab only (off: on every tab).
     var showButtonOnlyInHomeTab = true
+    /// Where the floating Connect button was dropped, as a fraction (0...1) of the screen width and
+    /// height; nil = the default spot at the bottom-left.
+    var connectButtonX: Double?
+    var connectButtonY: Double?
 
     // Subscription Settings.
     /// Refresh subscriptions automatically on launch / in the background.
@@ -653,6 +657,8 @@ struct AppSettings: Codable, Equatable {
         connectionButtonSize = try c.decodeIfPresent(ConnectionButtonSize.self, forKey: .connectionButtonSize) ?? connectionButtonSize
         fixedButtonPosition = try c.decodeIfPresent(Bool.self, forKey: .fixedButtonPosition) ?? fixedButtonPosition
         showButtonOnlyInHomeTab = try c.decodeIfPresent(Bool.self, forKey: .showButtonOnlyInHomeTab) ?? showButtonOnlyInHomeTab
+        connectButtonX = try c.decodeIfPresent(Double.self, forKey: .connectButtonX)
+        connectButtonY = try c.decodeIfPresent(Double.self, forKey: .connectButtonY)
         subscriptionAutoUpdate = try c.decodeIfPresent(Bool.self, forKey: .subscriptionAutoUpdate) ?? subscriptionAutoUpdate
         showAnnouncements = try c.decodeIfPresent(Bool.self, forKey: .showAnnouncements) ?? showAnnouncements
         sendHWID = try c.decodeIfPresent(Bool.self, forKey: .sendHWID) ?? sendHWID

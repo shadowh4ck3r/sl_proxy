@@ -34,6 +34,7 @@ struct AppearanceSettingsView: View {
                     Text("Theme")
                 } footer: {
                     Text("System Default follows the iOS appearance setting. Light and Dark override it for this app only. \(settings.value.fontStyle.detail)")
+                    .font(.caption2)
                 }
 
                 Section {
@@ -55,10 +56,17 @@ struct AppearanceSettingsView: View {
                     .pickerStyle(.menu)
                     Toggle("Fixed Button Position", isOn: $settings.value.fixedButtonPosition)
                     Toggle("Show only in Home Tab", isOn: $settings.value.showButtonOnlyInHomeTab)
+                    if settings.value.connectButtonX != nil {
+                        Button("Reset button position") {
+                            settings.value.connectButtonX = nil
+                            settings.value.connectButtonY = nil
+                        }
+                    }
                 } header: {
                     Text("Navigation Style")
                 } footer: {
                     Text("\(settings.value.navigationStyle.detail) \(buttonFooter)")
+                    .font(.caption2)
                 }
 
                 Section {
@@ -77,13 +85,12 @@ struct AppearanceSettingsView: View {
     }
 
     private var buttonFooter: String {
-        var text = "The Connect button is "
-        text += settings.value.fixedButtonPosition
-            ? "docked at the bottom-left of Home instead of scrolling with the content"
-            : "part of the Home content and scrolls with it"
+        var text = settings.value.fixedButtonPosition
+            ? "The Connect button floats over the screen: drag it anywhere and it stays there. Home shows a one-line status instead of the big card"
+            : "The Connect button is part of the Home card and scrolls with it"
         text += settings.value.showButtonOnlyInHomeTab
             ? ", and is shown on the Home tab only."
-            : ", and stays visible on every tab."
+            : ", and floats over the other tabs too."
         return text
     }
 
@@ -97,6 +104,8 @@ struct AppearanceSettingsView: View {
         updated.connectionButtonSize = defaults.connectionButtonSize
         updated.fixedButtonPosition = defaults.fixedButtonPosition
         updated.showButtonOnlyInHomeTab = defaults.showButtonOnlyInHomeTab
+        updated.connectButtonX = nil
+        updated.connectButtonY = nil
         settings.value = updated
     }
 }

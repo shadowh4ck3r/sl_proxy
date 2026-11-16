@@ -48,5 +48,11 @@ final class BannerStore: ObservableObject {
               let payload = try? JSONDecoder().decode(Payload.self, from: data) else { return }
         banners = payload.banners
         UserDefaults.standard.set(data, forKey: cacheKey)
+        // Download the logos now, in parallel, so the cards never wait for them.
+        await withTaskGroup(of: Void.self) { group in
+            for banner in payload.banners {
+                group.addTask { _ = await BannerImageCache.shared.load(banner.logo) }
+            }
+        }
     }
 }

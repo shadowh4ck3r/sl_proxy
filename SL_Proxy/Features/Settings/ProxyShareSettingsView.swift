@@ -49,6 +49,7 @@ struct ProxyShareSettingsView: View {
                     Text("Interface")
                 } footer: {
                     Text("Network interface the shared proxy listens on.")
+                    .font(.caption2)
                 }
 
                 Section {
@@ -78,6 +79,7 @@ struct ProxyShareSettingsView: View {
                     Text("Sharing")
                 } footer: {
                     Text(sharingFooter)
+                    .font(.caption2)
                 }
 
                 Section {
@@ -111,6 +113,7 @@ struct ProxyShareSettingsView: View {
                     Text("Port")
                 } footer: {
                     Text(portFooter)
+                    .font(.caption2)
                 }
 
                 Section {
@@ -146,6 +149,7 @@ struct ProxyShareSettingsView: View {
                     Text("Authentication")
                 } footer: {
                     Text(authFooter)
+                    .font(.caption2)
                 }
 
                 Section {
@@ -184,6 +188,7 @@ struct ProxyShareSettingsView: View {
                     Text("Auto-config (PAC)")
                 } footer: {
                     Text(pacFooter)
+                    .font(.caption2)
                 }
             }
             .scrollContentBackground(.hidden)

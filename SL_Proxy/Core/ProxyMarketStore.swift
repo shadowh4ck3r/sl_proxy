@@ -147,7 +147,8 @@ final class ProxyMarketStore: ObservableObject {
             nodes.toast = "That proxy has expired"
             return
         }
-        let label = name ?? (purchase.city.isEmpty ? purchase.country : purchase.city)
+        let fallback = purchase.city.isEmpty ? purchase.country : purchase.city
+        let label = name ?? (fallback.isEmpty ? "SailorsLoot proxy" : fallback)
         let node = nodes.addPurchased(purchase, name: label)
         nodes.select(node)
         if !tunnel.isConnected && !tunnel.isBusy { tunnel.toggle() }

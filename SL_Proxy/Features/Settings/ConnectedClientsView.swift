@@ -34,6 +34,7 @@ private struct ConnectedClientsList: View {
                     Text("Overview")
                 } footer: {
                     Text(footer)
+                    .font(.caption2)
                 }
 
                 Section {

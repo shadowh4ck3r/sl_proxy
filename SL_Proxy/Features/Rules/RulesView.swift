@@ -33,6 +33,7 @@ struct RulesView: View {
                         Text("Bypass and blocking")
                     } footer: {
                         Text("China bypass applies in Rule mode. Geo rule sets are downloaded through the proxy on first connect.")
+                    .font(.caption2)
                     }
 
                     // Custom rules
@@ -75,6 +76,7 @@ struct RulesView: View {
                         }
                     } footer: {
                         Text("Custom rules are evaluated in order before the mode default. Separate multiple values with commas.")
+                    .font(.caption2)
                     }
 
                     // Remote rule sets
@@ -114,6 +116,7 @@ struct RulesView: View {
                         }
                     } footer: {
                         Text("Compiled .srs rule-set files downloaded through the proxy on first connect. Each enabled set routes matching traffic through the proxy.")
+                    .font(.caption2)
                     }
                 }
                 .scrollContentBackground(.hidden)

@@ -19,6 +19,7 @@ struct SubscriptionSettingsView: View {
                     Text("Updates")
                 } footer: {
                     Text("Auto Update refreshes subscriptions on launch. Show Announcements displays notices published by your providers. Send HWID attaches a per-install hardware identifier to subscription requests for providers that bind a plan to one device.")
+                    .font(.caption2)
                 }
 
                 Section {
@@ -50,6 +51,7 @@ struct SubscriptionSettingsView: View {
                     Text("User-Agent")
                 } footer: {
                     Text(userAgentFooter)
+                    .font(.caption2)
                 }
             }
             .scrollContentBackground(.hidden)

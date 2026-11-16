@@ -31,6 +31,7 @@ struct OnDemandSettingsView: View {
                     }
                 } footer: {
                     Text("Connects or disconnects the proxy automatically when the device joins a network that matches a rule below. Rules are evaluated top to bottom; the first match wins.")
+                    .font(.caption2)
                 }
 
                 Section {
@@ -63,6 +64,7 @@ struct OnDemandSettingsView: View {
                     Text("Rules")
                 } footer: {
                     Text("Each card matches one network. Swipe a rule to delete it, or use Edit to reorder. Leave the name empty to match any network of that kind.")
+                    .font(.caption2)
                 }
             }
             .scrollContentBackground(.hidden)

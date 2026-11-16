@@ -66,6 +66,27 @@ final class ICloudBackupStore: ObservableObject {
     /// Ticks every 30 s so the relative "Synced ..." label stays current.
     @Published private var now = Date()
 
+    /// Older backups the user can restore (newest first), stored as one JSON array.
+    @Published private(set) var history: [BackupSnapshot] = []
+    /// Auto Sync on: local changes upload by themselves and a newer backup from another device is
+    /// applied automatically. Off: nothing is uploaded or applied until the user taps Back Up Now
+    /// or restores a backup from the list.
+    @Published var autoSync: Bool {
+        didSet {
+            AppGroup.sharedDefaults.set(autoSync, forKey: Self.autoSyncKey)
+            if autoSync { start() } else { pushTask?.cancel() }
+        }
+    }
+
+    static let historyKey = "sl-proxy.backup.history"
+    static let maxHistory = 5
+    /// History entries are written when a push happens at least this long after the newest one
+    /// (manual backups always add one).
+    private static let historyInterval: TimeInterval = 6 * 3600
+    private static let autoSyncKey = "icloud-backup-auto-sync"
+
+    private enum HistoryPolicy { case never, ifDue, always }
+
     static let snapshotKey = "sl-proxy.backup.snapshot"
     static let savedAtKey = "sl-proxy.backup.saved-at"
     /// NSUbiquitousKeyValueStore allows 1 MB per app (and per key).
@@ -85,6 +106,7 @@ final class ICloudBackupStore: ObservableObject {
         self.nodes = nodes
         self.settings = settings
         self.store = store
+        autoSync = AppGroup.sharedDefaults.object(forKey: Self.autoSyncKey) as? Bool ?? true
         if let stamp = AppGroup.sharedDefaults.object(forKey: Self.lastSyncedKey) as? Double {
             lastSynced = Date(timeIntervalSince1970: stamp)
         }
@@ -140,7 +162,9 @@ final class ICloudBackupStore: ObservableObject {
         case .syncing:
             return "Connected to iCloud: Syncing…"
         case .synced(let date):
-            return "Connected to iCloud: Synced \(Self.relative(date, to: now))"
+            return autoSync
+                ? "Connected to iCloud: Synced \(Self.relative(date, to: now))"
+                : "Connected to iCloud: Auto Sync is off"
         case .error(let message):
             return "iCloud sync error: \(message)"
         }
@@ -174,6 +198,14 @@ final class ICloudBackupStore: ObservableObject {
             status = .error(Self.notEntitledMessage)
             return
         }
+        history = readHistory()
+
+        // Auto Sync off: only report the connection; nothing is pulled or pushed by itself.
+        guard autoSync else {
+            if let remote = readRemote() { lastRemoteDevice = remote.deviceName }
+            status = .synced(lastSynced ?? Date())
+            return
+        }
 
         let local = currentContent
         if let remote = readRemote() {
@@ -190,23 +222,36 @@ final class ICloudBackupStore: ObservableObject {
                 return
             }
         }
-        push(force: true)
+        push(force: true, history: .never)
     }
 
-    /// Manual push from the iCloud Backup screen.
+    /// Manual push from the iCloud Backup screen; always adds an entry to the backups list.
     func backUpNow() {
         pushTask?.cancel()
-        push(force: true)
+        push(force: true, history: .always)
+    }
+
+    /// Puts an older backup from the list back on this device (and makes it the current backup).
+    func restore(_ snapshot: BackupSnapshot) {
+        apply(snapshot)
+        push(force: true, history: .never)
+    }
+
+    func deleteBackup(_ snapshot: BackupSnapshot) {
+        var list = readHistory()
+        list.removeAll { $0.savedAt == snapshot.savedAt }
+        writeHistory(list)
     }
 
     // MARK: - Local changes
 
     private func noteLocalChange() {
+        guard autoSync else { return }
         pushTask?.cancel()
         pushTask = Task { [weak self] in
             try? await Task.sleep(for: Self.pushDelay)
             guard !Task.isCancelled else { return }
-            self?.push()
+            self?.push(history: .ifDue)
         }
     }
 
@@ -218,7 +263,7 @@ final class ICloudBackupStore: ObservableObject {
         return BackupContent(nodes: stripped, subscriptions: nodes.subscriptions, settings: settings.value)
     }
 
-    private func push(force: Bool = false) {
+    private func push(force: Bool = false, history policy: HistoryPolicy = .never) {
         guard FileManager.default.ubiquityIdentityToken != nil else {
             status = .error(Self.noAccountMessage)
             return
@@ -250,7 +295,55 @@ final class ICloudBackupStore: ObservableObject {
         payloadBytes = data.count
         lastSyncedContent = content
         lastRemoteDevice = snapshot.deviceName
+        recordHistory(snapshot, policy: policy)
         markSynced(snapshot.savedAt)
+    }
+
+    // MARK: - Backups list
+
+    private func readHistory() -> [BackupSnapshot] {
+        guard let data = store.data(forKey: Self.historyKey),
+              let list = try? JSONDecoder().decode([BackupSnapshot].self, from: data) else { return [] }
+        return list.sorted { $0.savedAt > $1.savedAt }
+    }
+
+    private func writeHistory(_ list: [BackupSnapshot]) {
+        var list = Array(list.prefix(Self.maxHistory))
+        // Stay inside the 1 MB quota together with the current snapshot.
+        let budget = max(0, Self.maxPayloadBytes - payloadBytes - 50_000)
+        var data = (try? JSONEncoder().encode(list)) ?? Data()
+        while data.count > budget, list.count > 1 {
+            list.removeLast()
+            data = (try? JSONEncoder().encode(list)) ?? Data()
+        }
+        if data.count > budget { list = [] }
+        if list.isEmpty {
+            store.removeObject(forKey: Self.historyKey)
+        } else {
+            store.set(data, forKey: Self.historyKey)
+        }
+        _ = store.synchronize()
+        history = list
+    }
+
+    private func recordHistory(_ snapshot: BackupSnapshot, policy: HistoryPolicy) {
+        guard policy != .never else { return }
+        var list = readHistory()
+        if let newest = list.first {
+            if newest.content == snapshot.content {
+                // Same data as the newest entry: just refresh its time on a manual backup.
+                if policy == .always {
+                    list[0] = snapshot
+                    writeHistory(list)
+                }
+                return
+            }
+            if policy == .ifDue, snapshot.savedAt.timeIntervalSince(newest.savedAt) < Self.historyInterval {
+                return
+            }
+        }
+        list.insert(snapshot, at: 0)
+        writeHistory(list)
     }
 
     // MARK: - Remote changes
@@ -263,7 +356,8 @@ final class ICloudBackupStore: ObservableObject {
             start()
         default:
             // Server change or initial sync: apply the snapshot when it is newer than ours.
-            guard keys.contains(Self.snapshotKey), let remote = readRemote() else { return }
+            if keys.contains(Self.historyKey) { history = readHistory() }
+            guard autoSync, keys.contains(Self.snapshotKey), let remote = readRemote() else { return }
             if remote.content == currentContent {
                 lastSyncedContent = remote.content
                 lastRemoteDevice = remote.deviceName

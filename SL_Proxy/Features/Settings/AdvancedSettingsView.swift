@@ -67,6 +67,7 @@ struct AdvancedSettingsView: View {
                     Text("Combine WiFi + Cellular")
                 } footer: {
                     Text(combineFooter)
+                    .font(.caption2)
                 }
             }
             .scrollContentBackground(.hidden)
