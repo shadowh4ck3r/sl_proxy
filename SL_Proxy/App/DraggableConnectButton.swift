@@ -20,6 +20,9 @@ struct DraggableConnectOverlay: View {
     @State private var contentSize = CGSize(width: 90, height: 110)
     @State private var dragOrigin: CGPoint?
     @State private var liveCenter: CGPoint?
+    /// True while the button is being dragged and for a moment after. The buttons inside stop
+    /// receiving touches then, so lifting the finger after a drag never counts as a tap.
+    @State private var suppressTaps = false
 
     private let edge: CGFloat = 8
     /// The tab bar sits inside the overlay's frame; keep the button above it.
@@ -29,15 +32,20 @@ struct DraggableConnectOverlay: View {
         GeometryReader { proxy in
             if visible {
                 content
+                    .allowsHitTesting(!suppressTaps)
                     .background(
                         GeometryReader { inner in
                             Color.clear.preference(key: ConnectSizeKey.self, value: inner.size)
                         }
                     )
                     .onPreferenceChange(ConnectSizeKey.self) { contentSize = $0 }
+                    .contentShape(Rectangle())
                     .scaleEffect(liveCenter == nil ? 1 : 1.05)
                     .animation(.easeOut(duration: 0.15), value: liveCenter == nil)
-                    .simultaneousGesture(drag(in: proxy.size))
+                    // High priority: once the finger has moved a few points the drag owns the
+                    // touch and the Connect / Ping buttons under it are cancelled. A plain tap
+                    // never reaches the minimum distance, so it still connects.
+                    .highPriorityGesture(drag(in: proxy.size))
                     .position(liveCenter ?? savedCenter(in: proxy.size))
                     .transition(.opacity)
             }
@@ -79,6 +87,7 @@ struct DraggableConnectOverlay: View {
     private func drag(in size: CGSize) -> some Gesture {
         DragGesture(minimumDistance: 8, coordinateSpace: .global)
             .onChanged { value in
+                if !suppressTaps { suppressTaps = true }
                 if dragOrigin == nil { dragOrigin = savedCenter(in: size) }
                 guard let origin = dragOrigin else { return }
                 liveCenter = clamp(
@@ -93,6 +102,11 @@ struct DraggableConnectOverlay: View {
                 }
                 liveCenter = nil
                 dragOrigin = nil
+                // Keep the buttons disabled a moment longer so the release is not read as a tap.
+                Task {
+                    try? await Task.sleep(for: .milliseconds(350))
+                    suppressTaps = false
+                }
             }
     }
 }

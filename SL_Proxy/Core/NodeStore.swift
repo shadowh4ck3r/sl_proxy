@@ -52,7 +52,23 @@ final class NodeStore: ObservableObject {
     @Published private(set) var testingIDs: Set<UUID> = []
     @Published private(set) var refreshingIDs: Set<UUID> = []
     @Published private(set) var lastGeneratedConfig: String?
-    @Published var toast: String?
+    /// A short message shown at the top of the app. It dismisses itself after a few seconds, from
+    /// here and not from the view, so it can never get stuck when the view is rebuilt or the same
+    /// text is set twice.
+    @Published var toast: String? {
+        didSet { scheduleToastDismissal() }
+    }
+    private var toastTask: Task<Void, Never>?
+
+    private func scheduleToastDismissal() {
+        toastTask?.cancel()
+        guard let shown = toast else { return }
+        toastTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            if self?.toast == shown { self?.toast = nil }
+        }
+    }
 
     private let activeKey = "active-node-id"
     private let directory: URL

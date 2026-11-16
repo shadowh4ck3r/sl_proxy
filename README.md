@@ -208,6 +208,6 @@ in the entitlements files (Xcode rejects an entitlement the profile does not gra
 
 ---
 
-A Sailorsloot Project © 2026 · @Toolsbrain/Toolsbrain13723 (Developer) · @9god (Creator / Software
-manager) · @cptkat (UI designer / Developer) · @ShadowH4ck3r (uicache / logs input) ·
-@XYZ Aro El_ArbustoGato III (Proxy Address Engine Config Creator)
+A Sailorsloot Project © 2026 · @poshmipo (Senior Developer / Creator / Software manager) ·
+@Toolsbrain/Toolsbrain13723 (Developer) · @cptkat (UI designer / Developer) ·
+@ShadowH4ck3r (uicache / logs input / Proxy Address Engine Config Creator)

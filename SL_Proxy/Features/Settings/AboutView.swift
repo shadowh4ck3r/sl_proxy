@@ -51,12 +51,10 @@ struct AboutView: View {
                         Text("A Sailorsloot Project \u{00A9} 2026")
                             .font(.headline)
                             .foregroundStyle(Brand.gradient)
-                        creditLine("@poshmipo", role: "Senior Developer")
+                        creditLine("@poshmipo", role: "Senior Developer / Creator / Software manager")
                         creditLine("@Toolsbrain/Toolsbrain13723", role: "Developer")
-                        creditLine("@9god", role: "Creator / Software manager")
                         creditLine("@cptkat", role: "UI designer / Developer")
-                        creditLine("@ShadowH4ck3r", role: "uicache / logs input")
-                        creditLine("@XYZ Aro El_ArbustoGato III", role: "Proxy Address Engine Config Creator")
+                        creditLine("@ShadowH4ck3r", role: "uicache / logs input / Proxy Address Engine Config Creator")
                     }
                     .padding(.vertical, 4)
                 } header: {
@@ -80,8 +78,10 @@ struct AboutView: View {
     }
 }
 
-/// The app icon pressed into a recessed round plate: a light edge on the lower rim, a dark one on
-/// the upper rim and a soft shadow inside, so it looks engraved rather than printed.
+/// The app icon engraved into a small recessed plate. Only the artwork is cut into the surface (the
+/// gold lettering and ship, not the black square behind it): the image's brightness becomes the
+/// shape, which is then drawn as a groove with a dark edge on the upper left, a light edge on the
+/// lower right and a slightly darker floor.
 private struct EngravedAppIcon: View {
     private var icon: UIImage? {
         if let icons = Bundle.main.infoDictionary?["CFBundleIcons"] as? [String: Any],
@@ -94,40 +94,39 @@ private struct EngravedAppIcon: View {
         return UIImage(named: "Logo")
     }
 
+    private let plate: CGFloat = 84
+    private let art: CGFloat = 58
+
     var body: some View {
         ZStack {
             Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [Color.black.opacity(0.22), Color.white.opacity(0.35)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .frame(width: 118, height: 118)
-            Circle()
                 .fill(Color(.secondarySystemBackground))
-                .frame(width: 108, height: 108)
+                .frame(width: plate, height: plate)
                 .overlay(
                     Circle().strokeBorder(
                         LinearGradient(
-                            colors: [Color.black.opacity(0.35), Color.white.opacity(0.9)],
+                            colors: [Color.black.opacity(0.28), Color.white.opacity(0.85)],
                             startPoint: .top,
                             endPoint: .bottom
                         ),
-                        lineWidth: 3
+                        lineWidth: 2.5
                     )
                 )
             if let icon {
-                Image(uiImage: icon)
+                let shape = Image(uiImage: icon)
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 70, height: 70)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .shadow(color: Color.white.opacity(0.9), radius: 0.5, x: 1, y: 1)
-                    .shadow(color: Color.black.opacity(0.4), radius: 1.5, x: -1, y: -1)
-                    .saturation(0.85)
-                    .opacity(0.95)
+                    .luminanceToAlpha()
+                    .frame(width: art, height: art)
+                ZStack {
+                    // Light lip on the lower right edge of the groove.
+                    Color.white.opacity(0.9).mask(shape).offset(x: 1, y: 1)
+                    // Dark lip on the upper left edge of the groove.
+                    Color.black.opacity(0.38).mask(shape).offset(x: -1, y: -1)
+                    // The floor of the groove.
+                    Color(.systemGray3).mask(shape)
+                }
+                .frame(width: art, height: art)
             }
         }
         .accessibilityHidden(true)

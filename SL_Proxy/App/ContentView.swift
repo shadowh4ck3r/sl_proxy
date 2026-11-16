@@ -40,13 +40,14 @@ struct ContentView: View {
             if let toast = nodes.toast {
                 ToastView(text: toast)
                     .id(toast)
-                    .task {
-                        try? await Task.sleep(for: .seconds(2.5))
-                        if nodes.toast == toast { nodes.toast = nil }
-                    }
+                    .onTapGesture { nodes.toast = nil }
             }
         }
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: nodes.toast)
+        // A message left over from before the app was in the background is stale: drop it.
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            nodes.toast = nil
+        }
         // A running tunnel picks up node and settings changes automatically.
         .onChange(of: nodes.activeNodeID) { _ in tunnel.applyChanges() }
         .onChange(of: settings.value) { _ in tunnel.applyChanges() }
