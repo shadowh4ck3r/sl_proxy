@@ -47,6 +47,26 @@ package() {
 # 1. Raw unsigned IPA (for tools that re-sign)
 # ---------------------------------------------------------------------------
 stage_payload
+# Re-signers (Impactor, AltStore, Sideloadly) copy every entitlement they find in the existing
+# signature, including an App Group, and then try to register "<group>.<TEAMID>" with Apple, which
+# fails with "An Application Group with Identifier ... is not available". The raw IPA must carry no
+# signature, profile or entitlements at all, so strip whatever the archive left behind.
+RAW_APP="$IPA_DIR/Payload/$APP_NAME.app"
+find "$RAW_APP" -type d -name "_CodeSignature" -prune -exec rm -rf {} +
+find "$RAW_APP" -type f -name "embedded.mobileprovision" -delete
+find "$RAW_APP" -type f -name "*.entitlements" -delete
+if command -v codesign >/dev/null 2>&1; then
+  while IFS= read -r bin; do
+    codesign --remove-signature "$bin" 2>/dev/null || true
+  done < <(find "$RAW_APP" -type f \( -perm -u+x -o -name "*.dylib" \) )
+  while IFS= read -r fw; do
+    codesign --remove-signature "$fw" 2>/dev/null || true
+  done < <(find "$RAW_APP/Frameworks" -maxdepth 1 -type d -name "*.framework" 2>/dev/null)
+  if codesign -d --entitlements :- "$RAW_APP" 2>/dev/null | grep -q "application-groups"; then
+    echo "error: the unsigned IPA still carries an App Group entitlement"
+    exit 1
+  fi
+fi
 package "$IPA_BASENAME-unsigned.ipa"
 
 # ---------------------------------------------------------------------------

@@ -45,13 +45,20 @@ private struct BannerRow: View {
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
             VStack(alignment: .leading, spacing: 3) {
+                // Concrete colours, not `.primary` / `.secondary` styles: inside the paged TabView on
+                // the Katzy frosted-glass card the hierarchical styles lose their vibrancy and the
+                // body text disappeared, while the flat Erosion card showed it.
                 Text(banner.title)
                     .font(.subheadline.weight(.bold))
+                    .foregroundColor(Color(.label))
                     .lineLimit(1)
-                Text(banner.subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                if !banner.subtitle.isEmpty {
+                    Text(banner.subtitle)
+                        .font(.caption)
+                        .foregroundColor(Color(.secondaryLabel))
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             Spacer(minLength: 6)
             if let destination = banner.destination {
