@@ -24,3 +24,5 @@ Frameworks/Libbox.xcframework/
 
 # macOS
 .DS_Store
+
+/backend/
