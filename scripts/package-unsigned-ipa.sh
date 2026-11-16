@@ -27,10 +27,47 @@ APP="$ARCHIVE_PATH/Products/Applications/$APP_NAME.app"
 
 mkdir -p "$IPA_DIR"
 
+# gomobile's Libbox.framework ships without an Info.plist. iOS refuses to install an app that
+# embeds a framework with no Info.plist ("PackageInspectionFailed: Failed to load Info.plist from
+# bundle ... Frameworks/Libbox.framework"). When the core is linked statically into the app binary
+# the embedded copy is dead weight and is removed; when the app links it dynamically a minimal
+# Info.plist is written so the bundle is valid.
+fix_frameworks() {
+  local app="$1" bin fw name
+  bin="$app/$APP_NAME"
+  for fw in "$app"/Frameworks/*.framework; do
+    [ -d "$fw" ] || continue
+    [ -f "$fw/Info.plist" ] && continue
+    name="$(basename "$fw" .framework)"
+    if command -v otool >/dev/null 2>&1 && ! otool -L "$bin" | grep -q "$name.framework/$name"; then
+      echo "Removing $name.framework: no Info.plist and the app links it statically"
+      rm -rf "$fw"
+    else
+      echo "Writing Info.plist for $name.framework"
+      cat > "$fw/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key><string>$name</string>
+    <key>CFBundleIdentifier</key><string>com.slproxy.$(echo "$name" | tr '[:upper:]' '[:lower:]')</string>
+    <key>CFBundleName</key><string>$name</string>
+    <key>CFBundlePackageType</key><string>FMWK</string>
+    <key>CFBundleVersion</key><string>1</string>
+    <key>CFBundleShortVersionString</key><string>1.0</string>
+    <key>MinimumOSVersion</key><string>16.0</string>
+</dict>
+</plist>
+PLIST
+    fi
+  done
+}
+
 stage_payload() {
   rm -rf "$IPA_DIR/Payload"
   mkdir -p "$IPA_DIR/Payload"
   cp -R "$APP" "$IPA_DIR/Payload/"
+  fix_frameworks "$IPA_DIR/Payload/$APP_NAME.app"
 }
 
 package() {
