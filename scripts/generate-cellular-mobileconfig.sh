@@ -31,11 +31,25 @@
 # tester installs either the Universal profile (recommended, covers every SIM) or the single file
 # that matches their SIM, and removes it to return to the carrier's own settings.
 #
+# One profile can only name ONE proxy port, so a busy 20080 cannot be handled inside a profile. The
+# app falls back to the next free preset port instead (Settings > Proxy & Engine), and this script
+# therefore writes the whole set once per preset port:
+#
+#   Universal-Cellular-Proxy.mobileconfig          port 20080 (the default, unchanged file names)
+#   Universal-Cellular-Proxy-20081.mobileconfig    port 20081, and so on for every port in PROXY_PORTS
+#   Airtel-Cellular-Proxy-20081.mobileconfig       ... for each carrier too
+#
+# Installing the profile that matches the port shown on Home / Carrier Profile replaces the previous
+# one (every port shares the same PayloadIdentifier). Keep PROXY_PORTS in step with
+# AppSettings.localProxyPortOptions in SL_Proxy/Core/AppSettings.swift.
+#
 # Usage: generate-cellular-mobileconfig.sh [output-dir]        (default build/ipa)
 #
 # Environment overrides (all optional):
 #   PROXY_HOST                 proxy address written into every APN entry       (default 127.0.0.1)
-#   PROXY_PORT                 proxy port                                       (default 20080)
+#   PROXY_PORT                 default proxy port; its files carry no port suffix (default 20080)
+#   PROXY_PORTS                space-separated ports to generate, PROXY_PORT is always included
+#                              (default "20080 20081 20082 20880 21080 28080 38080")
 #   CELLULAR_APN_USERNAME      APN user name for EVERY carrier; replaces the per-carrier default
 #   CELLULAR_APN_PASSWORD      APN password for EVERY carrier; replaces the per-carrier default
 #   CELLULAR_APN_AUTH_TYPE     PAP or CHAP, omitted when empty (device default applies)
@@ -56,6 +70,8 @@ esac
 
 PROXY_HOST="${PROXY_HOST:-127.0.0.1}"
 PROXY_PORT="${PROXY_PORT:-20080}"
+DEFAULT_PORT="$PROXY_PORT"
+PROXY_PORTS="${PROXY_PORTS:-20080 20081 20082 20880 21080 28080 38080}"
 CELLULAR_APN_USERNAME="${CELLULAR_APN_USERNAME:-}"
 CELLULAR_APN_PASSWORD="${CELLULAR_APN_PASSWORD:-}"
 CELLULAR_APN_AUTH_TYPE="${CELLULAR_APN_AUTH_TYPE:-}"
@@ -79,16 +95,28 @@ CARRIERS=(
   "9mobile|9mobile-Cellular-Proxy.mobileconfig|9mobile|9mobile||"
 )
 
-case "$PROXY_PORT" in
-  ''|*[!0-9]*)
-    echo "error: PROXY_PORT must be a number (got '$PROXY_PORT')" >&2
+validate_port() {
+  case "$1" in
+    ''|*[!0-9]*)
+      echo "error: proxy port must be a number (got '$1')" >&2
+      exit 1
+      ;;
+  esac
+  if [ "$1" -lt 1 ] || [ "$1" -gt 65535 ]; then
+    echo "error: proxy port must be between 1 and 65535 (got $1)" >&2
     exit 1
-    ;;
-esac
-if [ "$PROXY_PORT" -lt 1 ] || [ "$PROXY_PORT" -gt 65535 ]; then
-  echo "error: PROXY_PORT must be between 1 and 65535 (got $PROXY_PORT)" >&2
-  exit 1
-fi
+  fi
+}
+
+# port_file <file name>: the default port keeps the plain name, every other port gets "-<port>".
+port_file() {
+  if [ "$PROXY_PORT" = "$DEFAULT_PORT" ]; then
+    printf '%s' "$1"
+  else
+    printf '%s' "${1%.mobileconfig}-${PROXY_PORT}.mobileconfig"
+  fi
+}
+
 case "$CELLULAR_APN_AUTH_TYPE" in
   ''|PAP|CHAP) ;;
   *)
@@ -176,7 +204,7 @@ EOF
 # distinct profiles rather than updates of one another.
 write_profile() {
   local slug="$1" file="$2" name="$3" apn="$4" user="$5" pass="$6"
-  local out="$OUT_DIR/$file"
+  local out="$OUT_DIR/$(port_file "$file")"
   local profile_uuid apn_uuid apn_xml name_xml apns
   profile_uuid="$(uuid)"
   apn_uuid="$(uuid)"
@@ -246,7 +274,7 @@ UNIVERSAL_FILE="Universal-Cellular-Proxy.mobileconfig"
 # iOS applies the entry that matches the inserted SIM, so this one profile covers MTN, Glo, Airtel
 # and 9mobile and a tester no longer has to pick the right single-carrier file.
 write_universal_profile() {
-  local out="$OUT_DIR/$UNIVERSAL_FILE"
+  local out="$OUT_DIR/$(port_file "$UNIVERSAL_FILE")"
   local profile_uuid apn_uuid apns=""
   profile_uuid="$(uuid)"
   apn_uuid="$(uuid)"
@@ -313,15 +341,26 @@ EOF
 
 mkdir -p "$OUT_DIR"
 
-for entry in "${CARRIERS[@]}"; do
-  IFS='|' read -r slug file name apn user pass <<< "$entry"
-  write_profile "$slug" "$file" "$name" "$apn" "${user:-}" "${pass:-}"
+# The default port first, then the rest without duplicates.
+PORT_LIST="$DEFAULT_PORT"
+for candidate in $PROXY_PORTS; do
+  case " $PORT_LIST " in *" $candidate "*) ;; *) PORT_LIST="$PORT_LIST $candidate" ;; esac
 done
 
-write_universal_profile
+PORT_COUNT=0
+for PROXY_PORT in $PORT_LIST; do
+  validate_port "$PROXY_PORT"
+  for entry in "${CARRIERS[@]}"; do
+    IFS='|' read -r slug file name apn user pass <<< "$entry"
+    write_profile "$slug" "$file" "$name" "$apn" "${user:-}" "${pass:-}"
+  done
+  write_universal_profile
+  PORT_COUNT=$((PORT_COUNT + 1))
+done
+PROXY_PORT="$DEFAULT_PORT"
 
 echo
-echo "Generated ${#CARRIERS[@]} carrier profiles + 1 universal bundle in $OUT_DIR"
+echo "Generated ${#CARRIERS[@]} carrier profiles + 1 universal bundle for each of $PORT_COUNT ports ($PORT_LIST) in $OUT_DIR"
 echo "  payload type:      com.apple.cellular"
 echo "  proxy:             ${PROXY_HOST}:${PROXY_PORT}"
 echo "  APN auth:          ${CELLULAR_APN_AUTH_TYPE:-<device default>}"

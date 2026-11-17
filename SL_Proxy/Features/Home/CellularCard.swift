@@ -5,6 +5,7 @@ import SwiftUI
 /// budgets are on, the cellular usage bars.
 struct CellularCard: View {
     @EnvironmentObject private var settings: SettingsStore
+    @EnvironmentObject private var tunnel: TunnelController
     @ObservedObject var verifier: ProfileVerifier
     @ObservedObject var budget: DataBudgetTracker
     let style: NavigationStyle
@@ -47,6 +48,31 @@ struct CellularCard: View {
                 }
             }
 
+            if tunnel.isOnFallbackPort, !verifier.state.isVerified, let port = tunnel.activePort {
+                // The chosen port is held by something else, so SL_Proxy moved to `port`. A profile
+                // names one port only: the one installed for the chosen port reaches that other
+                // process, not SL_Proxy. SL_Proxy moves back by itself once the chosen port frees up.
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Port \(settings.value.effectiveLocalProxyPort) is busy, so SL_Proxy is listening on \(port).",
+                          systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Color.orange)
+                    Text("Install the profile for port \(port), or free port \(settings.value.effectiveLocalProxyPort) (quit or remove the other proxy app). SL_Proxy switches back automatically when it is free.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    if let url = settings.value.universalCarrierProfileURL(port: port) {
+                        Button {
+                            UIApplication.shared.open(url)
+                        } label: {
+                            Label("Install Universal Profile for port \(port)", systemImage: "arrow.down.doc")
+                                .font(.footnote.weight(.semibold))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Brand.orange)
+                    }
+                }
+            }
+
             if profileActive {
                 // Verified: dismiss "Install your profile" and "Choose your carrier profile" for
                 // every carrier, including the Universal profile iOS needs when it hides the SIM.
@@ -64,7 +90,7 @@ struct CellularCard: View {
                     .foregroundStyle(Brand.orange)
                     .buttonStyle(.plain)
                 }
-            } else if let carrier, let url = settings.value.carrierProfileURL(for: carrier) {
+            } else if let carrier, let url = settings.value.carrierProfileURL(for: carrier, port: tunnel.activePort ?? settings.value.effectiveLocalProxyPort) {
                 Button {
                     requestedAt = Date().timeIntervalSince1970
                     UIApplication.shared.open(url)

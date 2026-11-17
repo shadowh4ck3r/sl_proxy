@@ -4,6 +4,7 @@ import SwiftUI
 /// one topic (Appearance, Proxy & Engine, DNS, Subscriptions, Advanced, Diagnostics, Logs, About).
 struct SettingsView: View {
     @EnvironmentObject private var account: SLAccountStore
+    @EnvironmentObject private var ota: OTAManager
     @State private var showAccount = false
 
     var body: some View {
@@ -11,6 +12,14 @@ struct SettingsView: View {
             ZStack {
                 Brand.background
                 Form {
+                    if !ota.components(for: "settings.top").isEmpty {
+                        Section {
+                            DynamicOTAView(placement: "settings.top")
+                        }
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets())
+                    }
+
                     Section {
                         Button {
                             showAccount = true

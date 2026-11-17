@@ -4,6 +4,9 @@ struct ContentView: View {
     @EnvironmentObject private var nodes: NodeStore
     @EnvironmentObject private var settings: SettingsStore
     @EnvironmentObject private var tunnel: TunnelController
+    /// Over-the-air UI and logic from sailorsloot.xyz (Core/OTAManager.swift). Created next to the
+    /// three stores it bridges to and started with them in `.task` below.
+    @StateObject private var ota = OTAManager()
 
     private enum AppTab: Hashable { case home, configs, rules, proxies, settings }
 
@@ -51,6 +54,12 @@ struct ContentView: View {
         // A running tunnel picks up node and settings changes automatically.
         .onChange(of: nodes.activeNodeID) { _ in tunnel.applyChanges() }
         .onChange(of: settings.value) { _ in tunnel.applyChanges() }
+        // Announcement modals from ui.json; the manager reaches every screen through the environment.
+        .otaModals(ota)
+        .environmentObject(ota)
+        // Loads the cached (or bundled) bundle, then checks the server; later checks follow
+        // UIApplication.didBecomeActiveNotification inside the manager.
+        .task { ota.start(nodes: nodes, settings: settings, tunnel: tunnel) }
     }
 }
 

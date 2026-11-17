@@ -57,7 +57,18 @@ enum Carrier: String, Codable, CaseIterable, Identifiable {
     }
 
     /// File name produced by the CI script and shipped in the `build_ipa` artifact.
-    var profileFileName: String { "\(title)-Cellular-Proxy.mobileconfig" }
+    var profileFileName: String { profileFileName(port: AppSettings.defaultLocalProxyPort) }
+
+    /// File for a listener port. The default port keeps the plain name; every other port carries
+    /// `-<port>` (`Airtel-Cellular-Proxy-20081.mobileconfig`), as written by the CI script.
+    func profileFileName(port: Int) -> String {
+        Self.portSuffixed("\(title)-Cellular-Proxy.mobileconfig", port: port)
+    }
+
+    static func portSuffixed(_ fileName: String, port: Int) -> String {
+        guard port != AppSettings.defaultLocalProxyPort else { return fileName }
+        return fileName.replacingOccurrences(of: ".mobileconfig", with: "-\(port).mobileconfig")
+    }
 
     /// Display name of the unified bundle that carries every carrier's APN in one profile.
     static let universalTitle = "Universal"
@@ -66,6 +77,10 @@ enum Carrier: String, Codable, CaseIterable, Identifiable {
     /// (`write_universal_profile`). One `com.apple.cellular` payload whose APNs array lists all four
     /// carriers, so a single install covers every regional network; keep the two in step.
     static let universalProfileFileName = "\(universalTitle)-Cellular-Proxy.mobileconfig"
+
+    static func universalProfileFileName(port: Int) -> String {
+        portSuffixed(universalProfileFileName, port: port)
+    }
 
     /// Mobile Country Code shared by every Nigerian network.
     static let nigeriaMCC = "621"

@@ -515,35 +515,31 @@ struct AppSettings: Codable, Equatable {
     /// CI job that publishes the profiles; GitLab needs it as a query parameter.
     static let carrierProfileJobName = "build_ipa"
 
-    /// Direct download link for the carrier's `.mobileconfig`, opened in Safari so iOS offers to
-    /// install it. Nil when the base URL is not a valid http(s) URL.
-    func carrierProfileURL(for carrier: Carrier) -> URL? {
-        let base = carrierProfileBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard var components = URLComponents(string: base), let scheme = components.scheme?.lowercased(),
-              scheme == "http" || scheme == "https", components.host != nil else { return nil }
-        var path = components.path
-        if path.hasSuffix("/") { path.removeLast() }
-        components.path = path + "/" + carrier.profileFileName
-        if base.contains("/-/jobs/artifacts/") {
-            var items = components.queryItems ?? []
-            if !items.contains(where: { $0.name == "job" }) {
-                items.append(URLQueryItem(name: "job", value: Self.carrierProfileJobName))
-            }
-            components.queryItems = items
-        }
-        return components.url
+    /// Direct download link for the carrier's `.mobileconfig` for `port` (default: the standard
+    /// port), opened in Safari so iOS offers to install it. A profile can name only one proxy port,
+    /// so the pipeline publishes one file per preset port (see `localProxyPortOptions`). Nil when the
+    /// base URL is not a valid http(s) URL.
+    func carrierProfileURL(for carrier: Carrier, port: Int = AppSettings.defaultLocalProxyPort) -> URL? {
+        profileURL(fileName: carrier.profileFileName(port: port))
     }
 
     /// Direct download link for the universal `.mobileconfig` bundle (every carrier's APN in one
-    /// profile). Built like `carrierProfileURL(for:)`; nil when the base URL is not a valid http(s)
-    /// URL.
+    /// profile) for `port`.
+    func universalCarrierProfileURL(port: Int) -> URL? {
+        profileURL(fileName: Carrier.universalProfileFileName(port: port))
+    }
+
     var universalCarrierProfileURL: URL? {
+        universalCarrierProfileURL(port: AppSettings.defaultLocalProxyPort)
+    }
+
+    private func profileURL(fileName: String) -> URL? {
         let base = carrierProfileBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard var components = URLComponents(string: base), let scheme = components.scheme?.lowercased(),
               scheme == "http" || scheme == "https", components.host != nil else { return nil }
         var path = components.path
         if path.hasSuffix("/") { path.removeLast() }
-        components.path = path + "/" + Carrier.universalProfileFileName
+        components.path = path + "/" + fileName
         if base.contains("/-/jobs/artifacts/") {
             var items = components.queryItems ?? []
             if !items.contains(where: { $0.name == "job" }) {

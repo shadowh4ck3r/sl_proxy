@@ -12,6 +12,9 @@ struct CarrierProfileView: View {
     @State private var baseURLText = ""
 
     private var carrier: Carrier? { settings.value.carrierOverride ?? detection.carrier }
+    /// Port the profile has to name: the live listener port, which differs from the Settings value
+    /// while the chosen port is busy and SL_Proxy runs on a fallback.
+    private var profilePort: Int { tunnel.activePort ?? settings.value.effectiveLocalProxyPort }
 
     var body: some View {
         ZStack {
@@ -54,9 +57,9 @@ struct CarrierProfileView: View {
                     if let carrier {
                         LabeledContent("APN", value: carrier.apn)
                         LabeledContent("APN login", value: carrier.apnLoginSummary)
-                        LabeledContent("Proxy", value: "\(AppSettings.localProxyHost):\(AppSettings.defaultLocalProxyPort)")
-                        LabeledContent("File", value: carrier.profileFileName)
-                        if let url = settings.value.carrierProfileURL(for: carrier) {
+                        LabeledContent("Proxy", value: "\(AppSettings.localProxyHost):\(profilePort)")
+                        LabeledContent("File", value: carrier.profileFileName(port: profilePort))
+                        if let url = settings.value.carrierProfileURL(for: carrier, port: profilePort) {
                             Button {
                                 UIApplication.shared.open(url)
                             } label: {
@@ -82,11 +85,14 @@ struct CarrierProfileView: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    if let universalURL = settings.value.universalCarrierProfileURL {
+                    if let universalURL = settings.value.universalCarrierProfileURL(port: profilePort) {
                         Button {
                             UIApplication.shared.open(universalURL)
                         } label: {
-                            Label("Install Universal Profile (all carriers)", systemImage: "square.stack.3d.down.right")
+                            Label(profilePort == AppSettings.defaultLocalProxyPort
+                                  ? "Install Universal Profile (all carriers)"
+                                  : "Install Universal Profile (port \(profilePort))",
+                                  systemImage: "square.stack.3d.down.right")
                         }
                         .buttonStyle(BrandButtonStyle())
                         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
@@ -127,7 +133,7 @@ struct CarrierProfileView: View {
                 } header: {
                     Text("Profile source")
                 } footer: {
-                    Text("Directory the four .mobileconfig files are downloaded from. The default is the latest build_ipa artifact of feature/advanced-plus-ui; the ?job= parameter is added automatically for GitLab artifact URLs.")
+                    Text("Directory the .mobileconfig files (one set per listener port) are downloaded from. The default is the latest build_ipa artifact of feature/advanced-plus-ui; the ?job= parameter is added automatically for GitLab artifact URLs.")
                     .font(.caption2)
                 }
 
@@ -165,7 +171,9 @@ struct CarrierProfileView: View {
         var text = "Opens the profile in Safari; iOS then offers it under Settings > Profile Downloaded. "
             + "The profile sets the APN (and its login where the carrier needs one) and points cellular data at the SL_Proxy listener, "
             + "so keep the proxy connected while it is installed. The Universal profile carries every carrier's APN, so it is the "
-            + "simplest choice when you are unsure which SIM you will use. A private project asks you to sign in to GitLab first."
+            + "simplest choice when you are unsure which SIM you will use. A profile names one port only, so the file matches the port SL_Proxy "
+            + "is listening on right now (\(profilePort)); if that port changes, install the profile for the new one, which replaces the old. "
+            + "A private project asks you to sign in to GitLab first."
         if let carrier, carrier.apnUsername != nil {
             text += " \(carrier.title) rejects the APN without its login; if an older profile without it is installed, remove it and install this one again."
         }

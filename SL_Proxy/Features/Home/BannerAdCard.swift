@@ -1,7 +1,12 @@
 import SwiftUI
 
-/// Home banner: logo, headline and a Get button that opens the ad's link. Several banners page
-/// sideways and rotate on their own.
+/// Home banner: logo, headline, the full body text and a Get button that opens the ad's link.
+/// Several banners page sideways (swipe or automatically).
+///
+/// The card is as tall as its tallest banner, whatever font the device renders (the Sketch app font
+/// and a non-jailbroken device wrap the body onto more lines than the system font). Every banner
+/// sits in one ZStack and only the current one is visible, so the stack measures itself and the body
+/// text is never cut off or abbreviated. A paged `TabView` cannot do this: it needs a fixed height.
 struct BannerAdCard: View {
     let banners: [BannerAd]
     let style: NavigationStyle
@@ -9,31 +14,58 @@ struct BannerAdCard: View {
     @State private var page = 0
     private let timer = Timer.publish(every: 6, on: .main, in: .common).autoconnect()
 
+    private var current: Int { min(page, max(banners.count - 1, 0)) }
+
     var body: some View {
-        TabView(selection: $page) {
+        ZStack {
             ForEach(Array(banners.enumerated()), id: \.element.id) { index, banner in
-                BannerRow(banner: banner)
-                    .tag(index)
+                BannerRow(banner: banner, reservesDots: banners.count > 1)
+                    .opacity(index == current ? 1 : 0)
+                    .allowsHitTesting(index == current)
+                    .accessibilityHidden(index != current)
             }
         }
-        .tabViewStyle(.page(indexDisplayMode: banners.count > 1 ? .automatic : .never))
-        .frame(height: banners.count > 1 ? 104 : 88)
+        .animation(.easeInOut(duration: 0.25), value: current)
+        .overlay(alignment: .bottom) {
+            if banners.count > 1 {
+                HStack(spacing: 6) {
+                    ForEach(banners.indices, id: \.self) { index in
+                        Circle()
+                            .fill(index == current ? Brand.orange : Color.secondary.opacity(0.35))
+                            .frame(width: 6, height: 6)
+                    }
+                }
+                .padding(.bottom, 8)
+                .allowsHitTesting(false)
+            }
+        }
         .navigationStyleCard(style, cornerRadius: 18, padding: 0)
+        .gesture(
+            DragGesture(minimumDistance: 24)
+                .onEnded { value in
+                    guard banners.count > 1, abs(value.translation.width) > abs(value.translation.height) else { return }
+                    let step = value.translation.width < 0 ? 1 : banners.count - 1
+                    page = (current + step) % banners.count
+                }
+        )
         .onReceive(timer) { _ in
             guard banners.count > 1 else { return }
-            withAnimation { page = (page + 1) % banners.count }
+            page = (current + 1) % banners.count
         }
     }
 }
 
 private struct BannerRow: View {
     let banner: BannerAd
+    /// Leaves room under the text for the page dots.
+    let reservesDots: Bool
     /// Starts from the cache, so a logo seen before shows on the first frame.
     @State private var image: UIImage?
     @State private var failed = false
 
-    init(banner: BannerAd) {
+    init(banner: BannerAd, reservesDots: Bool) {
         self.banner = banner
+        self.reservesDots = reservesDots
         _image = State(initialValue: BannerImageCache.shared.cached(banner.logo))
     }
 
@@ -51,12 +83,12 @@ private struct BannerRow: View {
                 Text(banner.title)
                     .font(.subheadline.weight(.bold))
                     .foregroundColor(Color(.label))
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                 if !banner.subtitle.isEmpty {
                     Text(banner.subtitle)
                         .font(.caption)
                         .foregroundColor(Color(.secondaryLabel))
-                        .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -77,7 +109,7 @@ private struct BannerRow: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .padding(.bottom, 8)
+        .padding(.bottom, reservesDots ? 14 : 0)
         .task(id: banner.logo) {
             guard image == nil else { return }
             failed = false

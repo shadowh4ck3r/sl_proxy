@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "flags": {
+    "smartRouting": false
+  },
+  "components": [
+    {
+      "id": "welcome-announcement",
+      "type": "banner",
+      "placement": "home.top",
+      "icon": "anchor",
+      "title": "Welcome aboard, Matey!",
+      "body": "Fresh proxies, OTP numbers and airtime from SailorsLoot. Tap to see what's new.",
+      "buttonTitle": "Open",
+      "dismissible": true,
+      "action": { "type": "url", "url": "https://sailorsloot.xyz" }
+    },
+    {
+      "id": "smart-routing-toggle",
+      "type": "toggle",
+      "placement": "home.bottom",
+      "key": "smartRouting",
+      "title": "Smart routing",
+      "body": "Sends all traffic through the proxy while this is on.",
+      "action": { "type": "js", "fn": "onSmartRouting" }
+    },
+    {
+      "id": "route-global",
+      "type": "button",
+      "placement": "home.bottom",
+      "title": "Route everything through the proxy",
+      "action": { "type": "js", "fn": "routeGlobal" }
+    }
+  ]
+}

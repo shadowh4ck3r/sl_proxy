@@ -29,6 +29,7 @@ struct HomeView: View {
                 Brand.background
                 ScrollView {
                     VStack(spacing: 18) {
+                        DynamicOTAView(placement: "home.top")
                         if !banners.banners.isEmpty {
                             BannerAdCard(banners: banners.banners, style: style)
                         }
@@ -50,6 +51,7 @@ struct HomeView: View {
                         if let error = tunnel.lastError {
                             errorCard(error)
                         }
+                        DynamicOTAView(placement: "home.bottom")
                     }
                     .padding()
                 }

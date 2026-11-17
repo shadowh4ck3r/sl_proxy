@@ -138,6 +138,7 @@ final class TunnelController: ObservableObject {
     private var appliedPACKey: String?
     /// Port Settings asked for when the running config was generated.
     private var requestedPort: Int?
+    private var reclaimTask: Task<Void, Never>?
     /// Proxy Share port Settings asked for when the running config was generated.
     private var requestedSharePort: Int?
     private var cancellables = Set<AnyCancellable>()
@@ -358,6 +359,7 @@ final class TunnelController: ObservableObject {
             if shareHost != nil { clients.start() } else { clients.stop() }
             await syncPAC(perPort, shareHost: shareHost, sharePort: sharePort, localPort: localPort)
             syncKeepAlive()
+            syncPortReclaim()
         } catch {
             appliedConfig = nil
             appliedPACKey = nil
@@ -397,6 +399,8 @@ final class TunnelController: ObservableObject {
     func stop() async {
         guard status == .running || status == .starting else { return }
         status = .stopping
+        reclaimTask?.cancel()
+        reclaimTask = nil
         await pac.stop()
         activePACPort = nil
         // Capture the port before clearing it so the passthrough can bind the same one.
@@ -457,6 +461,29 @@ final class TunnelController: ObservableObject {
             guard let self else { return }
             await self.stop()
             self.lastError = TunnelStartError.budgetExceeded(period).localizedDescription
+        }
+    }
+
+    /// Watches for the chosen port to become free while the core runs on a fallback port, then moves
+    /// back to it. A port can stay busy for a while after another proxy app was removed or killed,
+    /// and the carrier profile names the chosen port only, so staying on a fallback would leave
+    /// cellular data pointed at a dead listener until the next manual reconnect (or a phone restart).
+    private func syncPortReclaim() {
+        reclaimTask?.cancel()
+        reclaimTask = nil
+        guard status == .running, isOnFallbackPort else { return }
+        let preferred = settings.value.effectiveLocalProxyPort
+        reclaimTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(4))
+                guard let self, !Task.isCancelled, self.status == .running, self.isOnFallbackPort else { return }
+                guard !self.isBusy, await PortProbe.check(preferred) else { continue }
+                self.engine.record("Port \(preferred) is free again; moving back to it")
+                // Detach first so start() does not cancel the task that is running it.
+                self.reclaimTask = nil
+                await self.start()
+                return
+            }
         }
     }
 

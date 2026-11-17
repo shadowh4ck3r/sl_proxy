@@ -104,6 +104,13 @@ if command -v codesign >/dev/null 2>&1; then
     exit 1
   fi
 fi
+# The OTA starter bundle (tier 3 of the offline fallback) must be inside the app.
+for starter in default_ui.json default_logic.js; do
+  if [ -z "$(find "$RAW_APP" -name "$starter" -print -quit)" ]; then
+    echo "error: $starter is missing from the app bundle (SL_Proxy/Resources)"
+    exit 1
+  fi
+done
 package "$IPA_BASENAME-unsigned.ipa"
 
 # ---------------------------------------------------------------------------

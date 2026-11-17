@@ -60,10 +60,15 @@ jobs:
           SIGNED_IPA_NAME=SailorsLoot-UserSpace-Test-trollstore.ipa \
             bash ./scripts/package-unsigned-ipa.sh
 
+      - name: Generate carrier profiles (one set per listener port)
+        run: bash ./scripts/generate-cellular-mobileconfig.sh build/ipa
+
       - name: Save IPA files
         uses: actions/upload-artifact@v4
         with:
           name: SL-Proxy-IPAs
-          path: build/ipa/*.ipa
+          path: |
+            build/ipa/*.ipa
+            build/ipa/*.mobileconfig
           if-no-files-found: error
           retention-days: 14
