@@ -3,6 +3,16 @@
     {
       "filename" : "splash.png",
       "idiom" : "universal"
+    },
+    {
+      "appearances" : [
+        {
+          "appearance" : "luminosity",
+          "value" : "dark"
+        }
+      ],
+      "filename" : "splash-dark.png",
+      "idiom" : "universal"
     }
   ],
   "info" : {

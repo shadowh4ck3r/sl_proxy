@@ -196,13 +196,20 @@ enum SingBoxConfigBuilder {
     }
 
     private static func dns(_ s: AppSettings) -> [String: Any] {
-        var servers: [[String: Any]] = []
-        var remote: [String: Any] = ["tag": "remote", "address": s.remoteDNS, "detour": proxyTag]
-        var local: [String: Any] = ["tag": "local", "address": s.localDNS, "detour": directTag]
+        // Bundled core is sing-box v1.11.x (scripts/build-libbox.sh), so this uses the legacy
+        // `address` schema. Inputs are trimmed and normalised first (see `legacyDNSAddress`).
+        let remoteAddress = legacyDNSAddress(s.remoteDNS, fallback: "https://1.1.1.1/dns-query")
+        let localAddress = legacyDNSAddress(s.localDNS, fallback: "local")
 
-        if !addressNeedsNoResolver(s.remoteDNS) { remote["address_resolver"] = "local" }
-        if !addressNeedsNoResolver(s.localDNS) {
-            servers.append(["tag": "bootstrap", "address": "1.1.1.1", "detour": directTag])
+        var servers: [[String: Any]] = []
+        var remote: [String: Any] = ["tag": "remote", "address": remoteAddress, "detour": proxyTag]
+        var local: [String: Any] = ["tag": "local", "address": localAddress]
+        // The system resolver does not dial through an outbound, so `local` gets no detour.
+        if localAddress != "local" { local["detour"] = directTag }
+
+        if !addressNeedsNoResolver(remoteAddress) { remote["address_resolver"] = "local" }
+        if !addressNeedsNoResolver(localAddress) {
+            servers.append(["tag": "bootstrap", "address": "udp://1.1.1.1", "detour": directTag])
             local["address_resolver"] = "bootstrap"
         }
         servers.append(remote)
@@ -457,6 +464,20 @@ enum SingBoxConfigBuilder {
     }
 
     // MARK: - Helpers
+
+    /// Normalises a DNS address typed in Settings for the sing-box 1.11 legacy `address` schema:
+    /// trims whitespace, maps "System" / "local" to `local`, passes any URL with a scheme
+    /// (`https://`, `tls://`, `udp://`, ...) through unchanged, and prepends `udp://` to a plain
+    /// IP or host (IPv6 literals are bracketed). Empty input falls back to `fallback`.
+    static func legacyDNSAddress(_ raw: String, fallback: String) -> String {
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.isEmpty { return fallback }
+        let lowered = value.lowercased()
+        if lowered == "local" || lowered == "system" { return "local" }
+        if value.contains("://") { return value }
+        if IPv6Address(value) != nil { return "udp://[\(value)]" }
+        return "udp://" + value
+    }
 
     /// True when the DNS address can be used without another server resolving its host name.
     private static func addressNeedsNoResolver(_ address: String) -> Bool {

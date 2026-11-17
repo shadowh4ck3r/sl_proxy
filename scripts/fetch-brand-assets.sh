@@ -14,8 +14,10 @@
 set -uo pipefail
 
 APP_ICON_URL="${APP_ICON_URL:-https://sailorsloot.xyz/wp-content/uploads/2026/11/4DEDB0B3-C5C8-4E16-A185-7ECECF16517A.jpg}"
-IN_APP_LOGO_URL="${IN_APP_LOGO_URL:-https://sailorsloot.xyz/wp-content/uploads/2026/07/cropped-Untitled-design-4.png}"
+IN_APP_LOGO_URL="${IN_APP_LOGO_URL:-https://sailorsloot.xyz/wp-content/uploads/2026/11/IMG_7167.png}"
 SPLASH_URL="${SPLASH_URL:-https://sailorsloot.xyz/wp-content/uploads/2026/11/3F225F46-B241-4748-8678-E162EA81C2EB.jpg}"
+# Dark-mode splash. Defaults to the light splash until a dedicated dark image URL is supplied.
+SPLASH_DARK_URL="${SPLASH_DARK_URL:-$SPLASH_URL}"
 ICON_BACKGROUND="${ICON_BACKGROUND:-0F1014}"
 ICON_INSET="${ICON_INSET:-1.0}"
 
@@ -27,8 +29,9 @@ ICON_OUT="$ICONSET/AppIcon-1024.png"
 LOGO_OUT="$LOGOSET/logo.png"
 SPLASHSET="$ASSETS/Splash.imageset"
 SPLASH_OUT="$SPLASHSET/splash.png"
+SPLASH_DARK_OUT="$SPLASHSET/splash-dark.png"
 
-if [ -f "$ICON_OUT" ] && [ -f "$LOGO_OUT" ] && [ -f "$SPLASH_OUT" ] && [ "${FORCE_ASSETS:-0}" != "1" ]; then
+if [ -f "$ICON_OUT" ] && [ -f "$LOGO_OUT" ] && [ -f "$SPLASH_OUT" ] && [ -f "$SPLASH_DARK_OUT" ] && [ "${FORCE_ASSETS:-0}" != "1" ]; then
   echo "Brand assets already present (set FORCE_ASSETS=1 to refresh)"
   exit 0
 fi
@@ -86,16 +89,18 @@ else
   echo "warning: could not download the in-app logo from $IN_APP_LOGO_URL"
 fi
 
-exit 0
-
-# --- Splash screen ------------------------------------------------------------
+# --- Splash screen (light + dark) -----------------------------------------------
 mkdir -p "$SPLASHSET"
-if download "$SPLASH_URL" "$WORK/splash-src.jpg"; then
-  if sips -s format png "$WORK/splash-src.jpg" --out "$SPLASH_OUT" >/dev/null 2>&1; then
-    echo "Splash written to $SPLASH_OUT"
+fetch_splash() { # url out
+  if download "$1" "$WORK/splash-src"; then
+    sips -s format png "$WORK/splash-src" --out "$2" >/dev/null 2>&1 || cp "$WORK/splash-src" "$2"
+    echo "Splash written to $2"
   else
-    cp "$WORK/splash-src.jpg" "$SPLASH_OUT" && echo "Splash copied to $SPLASH_OUT"
+    echo "warning: could not download the splash from $1"
   fi
-else
-  echo "warning: could not download the splash from $SPLASH_URL"
-fi
+}
+fetch_splash "$SPLASH_URL" "$SPLASH_OUT"
+fetch_splash "$SPLASH_DARK_URL" "$SPLASH_DARK_OUT"
+[ -f "$SPLASH_OUT" ] && [ ! -f "$SPLASH_DARK_OUT" ] && cp "$SPLASH_OUT" "$SPLASH_DARK_OUT"
+
+exit 0

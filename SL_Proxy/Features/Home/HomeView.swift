@@ -60,7 +60,7 @@ struct HomeView: View {
             .animation(Self.layoutAnimation, value: isButtonFixed)
             .animation(.easeInOut(duration: 0.25), value: style)
             .toolbar {
-                ToolbarItem(placement: .principal) { BrandLogo(height: 30) }
+                ToolbarItem(placement: .principal) { BrandLogo(height: 22) }
             }
             .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showNodePicker) { NodePickerSheet() }

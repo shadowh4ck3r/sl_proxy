@@ -83,6 +83,7 @@ struct DNSPreset: Identifiable {
     static let local: [DNSPreset] = [
         DNSPreset(name: "Cloudflare", address: "1.1.1.1"),
         DNSPreset(name: "Google", address: "8.8.8.8"),
+        DNSPreset(name: "AdGuard", address: "94.140.14.14"),
         DNSPreset(name: "AliDNS", address: "223.5.5.5"),
         DNSPreset(name: "DNSPod", address: "119.29.29.29"),
         DNSPreset(name: "System", address: "local"),
