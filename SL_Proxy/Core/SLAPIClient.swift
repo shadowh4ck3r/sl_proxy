@@ -5,6 +5,8 @@ import Foundation
 enum SLConfig {
     static let apiBase = URL(string: "https://sailorsloot.xyz/wp-json/sl-proxy/v1/")!
     static let topUpURL = URL(string: "https://sailorsloot.xyz")!
+    /// Opened by "Sign up" on the signed-out Proxies screen. Change it here if the registration page lives elsewhere.
+    static let signUpURL = URL(string: "https://sailorsloot.xyz/register/")!
 }
 
 enum SLAPIError: LocalizedError {

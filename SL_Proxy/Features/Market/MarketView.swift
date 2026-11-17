@@ -16,11 +16,16 @@ struct MarketView: View {
     @State private var selected: SLListing?
     @State private var showFilters = false
     @State private var showAccount = false
+    @State private var showSignUp = false
 
     var body: some View {
         NavigationStack {
             ZStack {
-                Brand.background
+                if account.isLoggedIn {
+                    Brand.background
+                } else {
+                    SignedOutBackground()
+                }
                 VStack(spacing: 12) {
                     header
                     Picker("View", selection: $segment) {
@@ -42,6 +47,7 @@ struct MarketView: View {
             .sheet(item: $selected) { PurchaseSheet(listing: $0) }
             .sheet(isPresented: $showFilters) { MarketFilterSheet() }
             .sheet(isPresented: $showAccount) { AccountView() }
+            .sheet(isPresented: $showSignUp) { SafariView(url: SLConfig.signUpURL).ignoresSafeArea() }
             // A 401 anywhere in the market flow asks the user to log in again.
             .sheet(isPresented: $account.needsLogin) { AccountView() }
             .task { await refreshAll() }
@@ -101,28 +107,10 @@ struct MarketView: View {
     // MARK: Signed out
 
     private var loggedOut: some View {
-        VStack(spacing: 14) {
-            Spacer()
-            Image(systemName: "person.crop.circle.badge.checkmark")
-                .font(.system(size: 52))
-                .foregroundStyle(Brand.gradient)
-            Text("Connect your SailorsLoot account")
-                .font(.headline)
-            Text("Sign in to see your wallet, browse live proxies, buy one with your balance and connect in one tap.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-            Button {
-                showAccount = true
-            } label: {
-                Label("Connect SailorsLoot Account", systemImage: "person.fill")
-            }
-            .buttonStyle(BrandButtonStyle())
-            .padding(.horizontal, 32)
-            Spacer()
-            Spacer()
-        }
+        SignedOutProxiesView(
+            onConnect: { showAccount = true },
+            onSignUp: { showSignUp = true }
+        )
     }
 
     // MARK: Proxy List
