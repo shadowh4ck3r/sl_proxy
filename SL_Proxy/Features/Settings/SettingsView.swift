@@ -197,16 +197,24 @@ private struct DNSSettingsView: View {
     @EnvironmentObject private var settings: SettingsStore
     @StateObject private var systemDNS = SystemDNSManager()
     @AppStorage("systemEncryptedDNS") private var systemDNSOn = false
+    @AppStorage("tunnelDNSThroughProxy") private var tunnelDNSOn = false
 
     var body: some View {
         ZStack {
             Brand.background
             Form {
                 Section {
-                    DNSField(title: "Remote DNS (through proxy)", text: $settings.value.remoteDNS, presets: DNSPreset.remote)
+                    DNSField(title: tunnelDNSOn ? "Remote DNS (through proxy)" : "Remote DNS (encrypted, direct)", text: $settings.value.remoteDNS, presets: DNSPreset.remote)
                     DNSField(title: "Local DNS (direct)", text: $settings.value.localDNS, presets: DNSPreset.local)
                 } footer: {
                     Text("Remote DNS resolves proxied traffic; local DNS resolves the proxy server and bypassed traffic.")
+                        .font(.caption2)
+                }
+
+                Section {
+                    Toggle("Tunnel DNS through proxy (experimental)", isOn: $tunnelDNSOn)
+                } footer: {
+                    Text("Sends Remote DNS lookups through your proxy, so the resolver sees the proxy's country instead of the nearest one to you. Slower first loads, and the proxy must allow connections to your DNS server. If connections stop working, turn it off. Reconnect after changing it.")
                         .font(.caption2)
                 }
 

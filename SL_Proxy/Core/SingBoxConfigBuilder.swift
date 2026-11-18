@@ -7,6 +7,32 @@ enum SingBoxConfigBuilder {
     static let directTag = "direct"
     /// Tag of the urltest outbound group used when Auto Node Switching is on.
     static let urlTestGroupTag = "auto"
+    /// Tag of the extra outbound that carries Remote DNS when "Tunnel DNS through proxy" is on.
+    static let dnsProxyTag = "dns-proxy"
+    /// UserDefaults key of the DNS Settings switch (read here, written by `@AppStorage`).
+    static let tunnelDNSKey = "tunnelDNSThroughProxy"
+
+    static var tunnelDNSEnabled: Bool { UserDefaults.standard.bool(forKey: tunnelDNSKey) }
+
+    /// Call right before `build` when the switch is on: looks the proxy host name up with a plain
+    /// UDP query (Local DNS, or 1.1.1.1) and caches the IP, so the DNS-only outbound can dial an
+    /// address and never has to resolve a name in the middle of a Remote DNS request. Blocks for
+    /// at most about 1.5 s; on failure the old cached IP (if any) is kept.
+    static func prepareDNSTunnel(node: ProxyNode, settings: AppSettings) {
+        guard tunnelDNSEnabled, settings.routingMode != .direct else { return }
+        let host = node.server.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !host.isEmpty, IPv4Address(host) == nil, IPv6Address(host) == nil else { return }
+        ProxyHostResolver.warm(host: host, dnsServer: bootstrapDNSServer(settings))
+    }
+
+    /// IPv4 address of the resolver used for that lookup: the user's Local DNS when it is a plain
+    /// IPv4 address, otherwise 1.1.1.1. Never the iOS system resolver (see `dns`).
+    private static func bootstrapDNSServer(_ s: AppSettings) -> String {
+        var value = legacyDNSAddress(s.localDNS, fallback: "local")
+        if value.hasPrefix("udp://") { value = String(value.dropFirst(6)) }
+        if IPv4Address(value) != nil { return value }
+        return "1.1.1.1"
+    }
 
     private static let geositeBase = "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/"
     private static let geoipBase = "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/"
@@ -120,6 +146,13 @@ enum SingBoxConfigBuilder {
             outbounds = [proxyOutbound, ["type": "direct", "tag": directTag]]
         }
 
+        // Optional: carry Remote DNS through a copy of the selected node that dials the proxy by IP.
+        var remoteDetour = directTag
+        if tunnelDNSEnabled, settings.routingMode != .direct, let dnsOutbound = dnsProxyOutbound(node) {
+            outbounds.append(dnsOutbound)
+            remoteDetour = dnsProxyTag
+        }
+
         if case .loopback = inbound {
             // User-space engine: the app has no TUN and iOS does not let it bind sockets to
             // interfaces, so the core must not select interfaces itself. Plain sockets follow the
@@ -141,7 +174,7 @@ enum SingBoxConfigBuilder {
 
         let config: [String: Any] = [
             "log": ["level": settings.logLevel, "timestamp": true],
-            "dns": dns(settings, serverHosts: (allNodes + [node]).map { $0.server }),
+            "dns": dns(settings, serverHosts: (allNodes + [node]).map { $0.server }, remoteDetour: remoteDetour),
             "inbounds": inbounds,
             "outbounds": outbounds,
             "route": routeSection,
@@ -198,7 +231,7 @@ enum SingBoxConfigBuilder {
         ]
     }
 
-    private static func dns(_ s: AppSettings, serverHosts: [String] = []) -> [String: Any] {
+    private static func dns(_ s: AppSettings, serverHosts: [String] = [], remoteDetour: String = directTag) -> [String: Any] {
         // Bundled core is sing-box v1.11.x (scripts/build-libbox.sh), so this uses the legacy
         // `address` schema. Inputs are trimmed and normalised first (see `legacyDNSAddress`).
         let remoteAddress = legacyDNSAddress(s.remoteDNS, fallback: "https://1.1.1.1/dns-query")
@@ -213,7 +246,7 @@ enum SingBoxConfigBuilder {
         // (every Rule / Global connection then dies). The encrypted query still goes to the
         // resolver the user chose, so sites like ip8.com report that resolver instead of the
         // SOCKS5 server's upstream DNS; only the hop to the resolver is no longer tunnelled.
-        var remote: [String: Any] = ["tag": "remote", "address": remoteAddress, "detour": directTag]
+        var remote: [String: Any] = ["tag": "remote", "address": remoteAddress, "detour": remoteDetour]
         var local: [String: Any] = ["tag": "local", "address": localAddress]
         // The system resolver does not dial through an outbound, so `local` gets no detour.
         if localAddress != "local" { local["detour"] = directTag }
@@ -364,6 +397,33 @@ enum SingBoxConfigBuilder {
         case .block: json["action"] = "reject"
         }
         return json
+    }
+
+    /// Copy of `node` tagged `dns-proxy` that dials the proxy by IP address. Nil (so Remote DNS
+    /// stays on the direct outbound) when the host name has no cached IP or the node is WireGuard.
+    private static func dnsProxyOutbound(_ node: ProxyNode) -> [String: Any]? {
+        if node.kind == .wireguard { return nil }
+        var o = outbound(node, tag: dnsProxyTag)
+        let host = node.server.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if IPv4Address(host) != nil || IPv6Address(host) != nil { return o }
+        guard let ip = ProxyHostResolver.cached(host) else { return nil }
+        o["server"] = ip
+        // The host name is still what TLS (SNI) and WebSocket / HTTPUpgrade Host should say.
+        if var tls = o["tls"] as? [String: Any], tls["server_name"] == nil {
+            tls["server_name"] = node.server
+            o["tls"] = tls
+        }
+        if var transport = o["transport"] as? [String: Any], let type = transport["type"] as? String {
+            if type == "ws" {
+                var headers = transport["headers"] as? [String: Any] ?? [:]
+                if headers["Host"] == nil { headers["Host"] = node.server }
+                transport["headers"] = headers
+            } else if type == "httpupgrade", (transport["host"] as? String ?? "").isEmpty {
+                transport["host"] = node.server
+            }
+            o["transport"] = transport
+        }
+        return o
     }
 
     // MARK: - Outbound
@@ -539,5 +599,103 @@ enum SingBoxConfigBuilder {
         if let slash = host.firstIndex(of: "/") { host = String(host[..<slash]) }
         host = RawProxyURL.hostPort(host).host
         return IPv4Address(host) != nil || IPv6Address(host) != nil
+    }
+}
+
+/// Resolves a proxy host name to IPv4 with one plain UDP DNS query on a POSIX socket. It never
+/// uses the iOS system resolver, so it cannot be caught in the System Encrypted DNS deadlock.
+enum ProxyHostResolver {
+    private static let lock = NSLock()
+    private static var cache: [String: String] = [:]
+
+    static func cached(_ host: String) -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return cache[host.lowercased()]
+    }
+
+    /// Queries `dnsServer` (IPv4 literal) for `host` and caches the answer. Returns the IP, or
+    /// the previously cached one when the query fails.
+    @discardableResult
+    static func warm(host: String, dnsServer: String) -> String? {
+        let key = host.lowercased()
+        guard let ip = queryA(host: key, server: dnsServer, timeout: 1.5) else { return cached(key) }
+        lock.lock()
+        cache[key] = ip
+        lock.unlock()
+        return ip
+    }
+
+    private static func queryA(host: String, server: String, timeout: Double) -> String? {
+        let id = UInt16.random(in: 1...UInt16.max)
+        var query: [UInt8] = [UInt8(id >> 8), UInt8(id & 0xFF), 0x01, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0]
+        for label in host.split(separator: ".") {
+            let bytes = Array(label.utf8)
+            guard !bytes.isEmpty, bytes.count < 64 else { return nil }
+            query.append(UInt8(bytes.count))
+            query.append(contentsOf: bytes)
+        }
+        query.append(contentsOf: [0x00, 0x00, 0x01, 0x00, 0x01])
+
+        let fd = socket(AF_INET, SOCK_DGRAM, 0)
+        guard fd >= 0 else { return nil }
+        defer { close(fd) }
+
+        var tv = timeval(tv_sec: Int(timeout), tv_usec: Int32((timeout - Double(Int(timeout))) * 1_000_000))
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+
+        var addr = sockaddr_in()
+        addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = UInt16(53).bigEndian
+        guard inet_pton(AF_INET, server, &addr.sin_addr) == 1 else { return nil }
+
+        let sent = withUnsafePointer(to: &addr) { pointer -> Int in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
+                sendto(fd, query, query.count, 0, sa, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        guard sent == query.count else { return nil }
+
+        let capacity = 1500
+        var buffer = [UInt8](repeating: 0, count: capacity)
+        let received = recv(fd, &buffer, capacity, 0)
+        guard received >= 12 else { return nil }
+        return parseA(Array(buffer[0..<received]), id: id)
+    }
+
+    private static func skipName(_ b: [UInt8], _ start: Int) -> Int? {
+        var i = start
+        while i < b.count {
+            let length = Int(b[i])
+            if length == 0 { return i + 1 }
+            if length & 0xC0 == 0xC0 { return i + 2 <= b.count ? i + 2 : nil }
+            i += 1 + length
+        }
+        return nil
+    }
+
+    private static func parseA(_ b: [UInt8], id: UInt16) -> String? {
+        guard b.count >= 12, b[0] == UInt8(id >> 8), b[1] == UInt8(id & 0xFF) else { return nil }
+        guard b[3] & 0x0F == 0 else { return nil }
+        let questions = Int(b[4]) << 8 | Int(b[5])
+        let answers = Int(b[6]) << 8 | Int(b[7])
+        var i = 12
+        for _ in 0..<questions {
+            guard let next = skipName(b, i) else { return nil }
+            i = next + 4
+        }
+        for _ in 0..<answers {
+            guard let n = skipName(b, i), n + 10 <= b.count else { return nil }
+            let type = Int(b[n]) << 8 | Int(b[n + 1])
+            let length = Int(b[n + 8]) << 8 | Int(b[n + 9])
+            let data = n + 10
+            guard data + length <= b.count else { return nil }
+            if type == 1, length == 4 {
+                return "\(b[data]).\(b[data + 1]).\(b[data + 2]).\(b[data + 3])"
+            }
+            i = data + length
+        }
+        return nil
     }
 }

@@ -321,6 +321,7 @@ final class NodeStore: ObservableObject {
     @discardableResult
     func writeActiveConfig(settings: AppSettings) throws -> String {
         guard let node = activeNode else { throw NodeStoreError.noActiveNode }
+        SingBoxConfigBuilder.prepareDNSTunnel(node: node, settings: settings)
         let json = try SingBoxConfigBuilder.build(node: node, settings: settings, allNodes: nodes)
         lastGeneratedConfig = json
         if let url = AppGroup.activeConfigURL {
