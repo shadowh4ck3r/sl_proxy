@@ -10,6 +10,11 @@
 //                                   navigationStyle }
 //   getFlag(key, fallback) / setFlag(key, value)   feature flags (booleans) shared with the app
 //   openURL(url)                  open an http(s) link in Safari
+//   setSingBoxOverrides(json)     JSON object (as a string) deep-merged onto the generated sing-box
+//                                 config before it is written; "" or "{}" clears it; returns false
+//                                 when the text is not a JSON object. "inbounds" (the loopback
+//                                 listener) and "experimental.clash_api" are never overridden.
+//                                 A running tunnel restarts with the new config by itself.
 //   console.log(message)          written to the device log
 //
 // Functions named in ui.json ("action": { "type": "js", "fn": "..." }) must exist here, otherwise

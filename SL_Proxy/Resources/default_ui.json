@@ -1,7 +1,8 @@
 {
   "schema": 1,
   "flags": {
-    "smartRouting": false
+    "smartRouting": false,
+    "hide_home_chart": true
   },
   "components": [
     {

@@ -36,6 +36,7 @@ struct SLProxyApp: App {
                 .environmentObject(account)
                 .environmentObject(market)
                 .environmentObject(language)
+                // In-app language: every Text("...") re-resolves from <code>.lproj at once.
                 .environment(\.locale, language.locale)
                 .environment(\.layoutDirection, language.layoutDirection)
                 .overlay {

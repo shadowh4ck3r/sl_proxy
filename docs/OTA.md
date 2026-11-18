@@ -83,7 +83,7 @@ next check on.
 ```json
 {
   "schema": 1,
-  "flags": { "smartRouting": false },
+  "flags": { "smartRouting": false, "hide_home_chart": true },
   "components": [
     { "id": "promo-1", "type": "banner", "placement": "home.top", "icon": "megaphone.fill",
       "title": "Weekend deal", "body": "20% off proxies.", "buttonTitle": "Open",
@@ -91,6 +91,16 @@ next check on.
   ]
 }
 ```
+
+Built-in flags the app reads from `flags`:
+
+| Flag | Meaning |
+|---|---|
+| `hide_home_chart` | Bool, default `true`. The live traffic chart lives in Settings; set `false` to show it on Home again. |
+| `default_home_layout` | String: `classic`, `tactical`, `telemetry` or `terminal`. Home layout used until the user picks one in Settings > Appearance > Home Screen Style. |
+| `singbox_overrides` | Object (or a JSON string). Deep-merged onto the generated sing-box config right before it is written; objects merge key by key, arrays and scalars replace. `inbounds` and `experimental.clash_api` are ignored. A bundle without the key clears the previous override. |
+
+Example: `"singbox_overrides": { "log": { "level": "error" }, "dns": { "strategy": "ipv4_only" } }`
 
 | Field | Meaning |
 |---|---|
@@ -113,6 +123,7 @@ next check on.
 | `setRoutingMode("rule" \| "global" \| "direct")` | `settings.value.routingMode` |
 | `getAppState()` | `{appVersion, build, otaVersion, activeNodeID, activeNodeName, nodeCount, tunnelStatus, connected, port, routingMode, navigationStyle}` |
 | `getFlag(key, fallback)`, `setFlag(key, bool)` | feature flags shared with native code |
+| `setSingBoxOverrides(jsonString)` | stores the sing-box config override (same as `flags.singbox_overrides`); `""` or `"{}"` clears it. Returns `false` when the text is not a JSON object. A running tunnel switches by itself. |
 | `openURL(url)` | http(s) only |
 | `console.log(text)` | device log |
 

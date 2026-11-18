@@ -11,12 +11,13 @@ import SwiftUI
 /// sing-box config on settings changes, finds it unchanged and leaves the running core alone.
 struct AppearanceSettingsView: View {
     @EnvironmentObject private var settings: SettingsStore
-    @ObservedObject private var ota = OTAFlags.shared
+    @EnvironmentObject private var ota: OTAManager
+    /// Empty until the user picks a layout; Home then falls back to the OTA default, then Classic.
     @AppStorage(HomeLayoutStyle.storageKey) private var storedLayout = ""
 
     private var layoutSelection: Binding<HomeLayoutStyle> {
         Binding(
-            get: { HomeLayoutStyle.resolve(stored: storedLayout, otaDefault: ota.defaultHomeLayout) },
+            get: { HomeLayoutStyle.resolve(stored: storedLayout, otaDefault: ota.stringFlag("default_home_layout")) },
             set: { storedLayout = $0.rawValue }
         )
     }
@@ -32,6 +33,11 @@ struct AppearanceSettingsView: View {
                         }
                     }
                     .pickerStyle(.menu)
+                } header: {
+                    Text("Home Screen Style")
+                } footer: {
+                    Text("Classic is the original Home. The others show the same connection state in a different layout. You can switch back any time.")
+                        .font(.caption2)
                 }
 
                 Section {

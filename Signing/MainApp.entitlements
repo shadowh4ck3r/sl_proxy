@@ -13,8 +13,13 @@
     <string>SLPROXY000</string>
     <key>com.apple.developer.ubiquity-kvstore-identifier</key>
     <string>SLPROXY000.com.slproxy.userspace</string>
+    <!-- Optional System Encrypted DNS (Settings > DNS Settings) uses NEDNSSettingsManager, which
+         needs the dns-settings value. Free Apple ID builds cannot provision it; the screen then
+         reports the missing entitlement. -->
     <key>com.apple.developer.networking.networkextension</key>
-    <array><string>dns-settings</string></array>
+    <array>
+        <string>dns-settings</string>
+    </array>
     <key>get-task-allow</key>
     <false/>
 </dict>

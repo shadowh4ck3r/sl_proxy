@@ -16,7 +16,8 @@ struct HomeView: View {
     @State private var showNodePicker = false
     @StateObject private var exitIP = ExitIPStore()
     @StateObject private var banners = BannerStore()
-    @ObservedObject private var ota = OTAFlags.shared
+    @EnvironmentObject private var ota: OTAManager
+    /// The user's pick from Settings > Appearance > Home Screen Style; empty until they choose.
     @AppStorage(HomeLayoutStyle.storageKey) private var storedLayout = ""
 
     private static let layoutAnimation = Animation.spring(response: 0.4, dampingFraction: 0.8)
@@ -25,20 +26,22 @@ struct HomeView: View {
     private var buttonSize: ConnectionButtonSize { settings.value.connectionButtonSize }
     private var isButtonFixed: Bool { settings.value.fixedButtonPosition }
     private var layout: HomeLayoutStyle {
-        HomeLayoutStyle.resolve(stored: storedLayout, otaDefault: ota.defaultHomeLayout)
+        HomeLayoutStyle.resolve(stored: storedLayout, otaDefault: ota.stringFlag("default_home_layout"))
     }
 
     var body: some View {
         NavigationStack {
             ZStack {
                 Brand.background
-                Group {
-                    switch layout {
-                    case .classic: classicContent
-                    case .tactical: TacticalHomeView(showNodePicker: $showNodePicker, banner: bannerSection)
-                    case .telemetry: TelemetryHomeView(showNodePicker: $showNodePicker, banner: bannerSection)
-                    case .terminal: TerminalHomeView(exitIP: exitIP, banner: bannerSection)
-                    }
+                switch layout {
+                case .classic:
+                    classicContent
+                case .tactical:
+                    TacticalHomeView(showNodePicker: $showNodePicker, top: topSection, bottom: bottomSection)
+                case .telemetry:
+                    TelemetryHomeView(showNodePicker: $showNodePicker, top: topSection, bottom: bottomSection)
+                case .terminal:
+                    TerminalHomeView(exitIP: exitIP, top: topSection, bottom: bottomSection)
                 }
             }
             .animation(Self.layoutAnimation, value: buttonSize)
@@ -50,6 +53,7 @@ struct HomeView: View {
             .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showNodePicker) { NodePickerSheet() }
             .task { await banners.refresh() }
+            // Flag and masked exit IP of the running connection; cleared on disconnect.
             .task(id: "\(tunnel.isConnected)-\(nodes.activeNodeID?.uuidString ?? "")") {
                 if tunnel.isConnected {
                     try? await Task.sleep(for: .seconds(2))
@@ -61,36 +65,57 @@ struct HomeView: View {
         }
     }
 
-    private var bannerSection: AnyView {
-        AnyView(VStack(spacing: 10) {
+    // MARK: - Layouts
+
+    /// OTA `home.top` components plus the banner ad, shared by every layout.
+    private var topSection: AnyView {
+        AnyView(VStack(spacing: 18) {
             DynamicOTAView(placement: "home.top")
-            if !banners.banners.isEmpty { BannerAdCard(banners: banners.banners, style: style) }
+            if !banners.banners.isEmpty {
+                BannerAdCard(banners: banners.banners, style: style)
+            }
         })
     }
 
+    /// OTA `home.bottom` components (for example the Smart routing toggle).
+    private var bottomSection: AnyView {
+        AnyView(DynamicOTAView(placement: "home.bottom"))
+    }
+
+    /// The original Home layout ("classic"), unchanged apart from the OTA-gated chart card.
     private var classicContent: some View {
         ScrollView {
-            VStack(spacing: 18) {
-                DynamicOTAView(placement: "home.top")
-                if !banners.banners.isEmpty {
-                    BannerAdCard(banners: banners.banners, style: style)
+                    VStack(spacing: 18) {
+                        DynamicOTAView(placement: "home.top")
+                        if !banners.banners.isEmpty {
+                            BannerAdCard(banners: banners.banners, style: style)
+                        }
+                        if isButtonFixed {
+                            statusPill
+                        } else {
+                            connectCard
+                        }
+                        LocalProxyCard(endpoint: tunnel.proxyEndpoint,
+                                       isRunning: tunnel.isConnected,
+                                       passthroughActive: tunnel.passthroughActive) {
+                            UIPasteboard.general.string = tunnel.proxyEndpoint
+                            nodes.toast = "Proxy address copied"
+                        }
+                        CellularCard(verifier: tunnel.verifier, budget: tunnel.budget, style: style)
+                        nodeCard
+                        modeCard
+                        // Moved to Settings. The OTA flag `hide_home_chart` (default true) decides:
+                        // set it to false in ui.json "flags" to show the chart here again.
+                        if !ota.hidesHomeChart {
+                            TrafficCard(traffic: tunnel.traffic)
+                        }
+                        if let error = tunnel.lastError {
+                            errorCard(error)
+                        }
+                        DynamicOTAView(placement: "home.bottom")
+                    }
+                    .padding()
                 }
-                if isButtonFixed { statusPill } else { connectCard }
-                LocalProxyCard(endpoint: tunnel.proxyEndpoint,
-                               isRunning: tunnel.isConnected,
-                               passthroughActive: tunnel.passthroughActive) {
-                    UIPasteboard.general.string = tunnel.proxyEndpoint
-                    nodes.toast = "Proxy address copied"
-                }
-                CellularCard(verifier: tunnel.verifier, budget: tunnel.budget, style: style)
-                nodeCard
-                modeCard
-                if !ota.hidesHomeChart { TrafficCard(traffic: tunnel.traffic) }
-                if let error = tunnel.lastError { errorCard(error) }
-                DynamicOTAView(placement: "home.bottom")
-            }
-            .padding()
-        }
     }
 
     // MARK: - Connect button

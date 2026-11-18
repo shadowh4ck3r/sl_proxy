@@ -150,6 +150,8 @@ enum SingBoxConfigBuilder {
                 "cache_file": ["enabled": true, "path": "cache.db"],
             ],
         ]
+        // OTA hook: `singbox_overrides` from ui.json flags is deep-merged here, right before the
+        // config is serialised and written (listeners and the Clash API are protected).
         let finalConfig = OTAOverrides.apply(to: config)
         let data = try JSONSerialization.data(
             withJSONObject: finalConfig,
@@ -240,6 +242,10 @@ enum SingBoxConfigBuilder {
 
         if s.sniffing { rules.append(["action": "sniff"]) }
         rules.append(["protocol": "dns", "action": "hijack-dns"])
+        // Resolve destination domains here, with the user's Remote DNS, BEFORE they are forwarded
+        // to the upstream SOCKS5 / HTTP server. Without it the domain name is handed to the
+        // upstream server and ITS resolver answers (ip8.com then shows the server's DNS).
+        // Direct mode keeps the local resolver and skips this.
         if s.routingMode != .direct {
             rules.append(["action": "resolve", "server": "remote", "strategy": "prefer_ipv4"])
         }

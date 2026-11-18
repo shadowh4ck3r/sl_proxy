@@ -14,7 +14,7 @@ import UserNotifications
 ///    notification at `.serious` / `.critical` so the user can disconnect and let the phone cool.
 enum ThermalGuard {
     /// Multiplier for poll intervals; 1 when the device is cool.
-    static var pollScale: Int64 {
+    static var pollScale: Int {
         switch ProcessInfo.processInfo.thermalState {
         case .nominal, .fair: return 1
         case .serious: return 3

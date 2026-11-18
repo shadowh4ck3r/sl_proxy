@@ -379,6 +379,9 @@ struct AppSettings: Codable, Equatable {
     var sniffing = true
 
     var autoConnectOnLaunch = false
+    /// "info" logs every connection and DNS lookup; with the cellular profile that is thousands of
+    /// lines a minute (CPU, log file I/O, heat). "warn" keeps errors and warnings. Existing saved
+    /// settings keep whatever the user chose.
     var logLevel = "warn"
     /// User-space build: keep the in-app proxy alive when the app is minimized (silent audio
     /// session + background task, see BackgroundKeepAlive).

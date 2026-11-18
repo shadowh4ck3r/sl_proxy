@@ -221,7 +221,10 @@ struct SignedOutProxiesView: View {
         .fixedSize(horizontal: false, vertical: true)
     }
 
-    /// The `sl_logo` asset (SL>_). Falls back to the same mark drawn as text when the asset is missing.
+    /// The real SL>_ logo image, the same asset the Home header uses (`Logo`; a dedicated `sl_logo`
+    /// asset wins when one exists). Never drawn as text: the text fallback rendered as a plain
+    /// glyph in the app font instead of the brand mark. Both assets keep their transparency, so
+    /// the mark reads on the light and the dark background.
     @ViewBuilder
     private func logo(_ m: Metrics) -> some View {
         if UIImage(named: "sl_logo") != nil {
@@ -231,10 +234,7 @@ struct SignedOutProxiesView: View {
                 .frame(height: m.logo)
                 .accessibilityLabel("SL_Proxy")
         } else {
-            Text("SL>_")
-                .font(.system(size: m.logo * 0.95, weight: .heavy, design: .rounded))
-                .foregroundStyle(Brand.gradient)
-                .frame(height: m.logo)
+            BrandLogo(height: m.logo)
                 .accessibilityLabel("SL_Proxy")
         }
     }

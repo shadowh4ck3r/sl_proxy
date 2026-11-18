@@ -43,11 +43,15 @@ struct SettingsView: View {
                         .foregroundStyle(.primary)
                     }
 
+                    // Live speed and chart: moved here from Home (Home shows it again only when the
+                    // OTA flag hide_home_chart is false in ui.json).
                     Section {
                         TrafficCard(traffic: tunnel.traffic)
                             .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                             .listRowBackground(Color.clear)
-                    } header: { Text("Live Traffic") }
+                    } header: {
+                        Text("Live Traffic")
+                    }
 
                     Section {
                         Picker(selection: $language.code) {
@@ -210,13 +214,21 @@ private struct DNSSettingsView: View {
                     Toggle("System Encrypted DNS (No VPN Icon)", isOn: $systemDNSOn)
                         .disabled(systemDNS.isBusy)
                     if systemDNSOn, systemDNS.isEnabled == false {
-                        Text("Saved. Turn it on in iOS Settings > General > VPN & Device Management > DNS.")
+                        Text("Almost done: open iOS Settings > General > VPN & Device Management > DNS and select SL_Proxy Encrypted DNS.")
                             .font(.footnote)
+                            .foregroundStyle(Brand.gold)
                     }
                     if let message = systemDNS.message {
-                        Text(message).font(.footnote).foregroundStyle(.secondary)
+                        Text(message)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     }
-                } header: { Text("System DNS") }
+                } header: {
+                    Text("System DNS")
+                } footer: {
+                    Text("Mirrors your Remote DNS into iOS as a DoH / DoT profile, so the whole system resolves over encrypted DNS without a VPN icon. Needs a DoH (https://) or DoT (tls://) Remote DNS.")
+                        .font(.caption2)
+                }
             }
             .scrollContentBackground(.hidden)
         }
@@ -225,10 +237,10 @@ private struct DNSSettingsView: View {
         .task { await systemDNS.refresh() }
         .onChange(of: systemDNSOn) { enabled in
             Task {
-                if enabled { await systemDNS.apply(remoteDNS: settings.value.remoteDNS) }
-                else { await systemDNS.remove() }
+                if enabled { await systemDNS.apply(remoteDNS: settings.value.remoteDNS) } else { await systemDNS.remove() }
             }
         }
+        // Keep the system profile in step with the Remote DNS the user picks.
         .onChange(of: settings.value.remoteDNS) { value in
             guard systemDNSOn else { return }
             Task { await systemDNS.apply(remoteDNS: value) }

@@ -1,5 +1,4 @@
 import Foundation
-import Combine
 import NetworkExtension
 
 /// Optional "System Encrypted DNS (No VPN Icon)": mirrors the Remote DNS chosen in DNS Settings

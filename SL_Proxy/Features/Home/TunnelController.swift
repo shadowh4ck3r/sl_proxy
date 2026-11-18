@@ -157,6 +157,7 @@ final class TunnelController: ObservableObject {
         // A fresh launch: clear any "stopped" alert left over from the previous run.
         watchdog.stop()
 
+        // Heat: log thermal transitions, slow the pollers and warn the user (see ThermalGuard).
         let thermalEngine = engine
         thermal.start { line in thermalEngine.record(line) }
 

@@ -155,12 +155,15 @@ struct TacticalHomeView: View {
     @EnvironmentObject private var tunnel: TunnelController
     @EnvironmentObject private var nodes: NodeStore
     @Binding var showNodePicker: Bool
-    let banner: AnyView
+    /// OTA `home.top` components and the banner ad.
+    let top: AnyView
+    /// OTA `home.bottom` components.
+    let bottom: AnyView
 
     var body: some View {
         ScrollView {
             VStack(spacing: 14) {
-                banner
+                top
                 HStack(alignment: .top, spacing: 12) {
                     localProxyCard
                     TacticalCellularCard(verifier: tunnel.verifier)
@@ -171,7 +174,7 @@ struct TacticalHomeView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, 6)
                 HomeErrorBanner()
-                DynamicOTAView(placement: "home.bottom")
+                bottom
             }
             .padding()
         }
@@ -232,19 +235,22 @@ private struct TacticalCellularCard: View {
 struct TelemetryHomeView: View {
     @EnvironmentObject private var tunnel: TunnelController
     @Binding var showNodePicker: Bool
-    let banner: AnyView
+    /// OTA `home.top` components and the banner ad.
+    let top: AnyView
+    /// OTA `home.bottom` components.
+    let bottom: AnyView
 
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(spacing: 16) {
-                    banner
+                    top
                     BrandLogo(height: 44)
                     statusPill
                     ActiveServerRow(showNodePicker: $showNodePicker)
                     TelemetryMetrics(traffic: tunnel.traffic)
                     HomeErrorBanner()
-                    DynamicOTAView(placement: "home.bottom")
+                    bottom
                 }
                 .padding()
             }
@@ -331,7 +337,10 @@ struct TerminalHomeView: View {
     @EnvironmentObject private var nodes: NodeStore
     @EnvironmentObject private var settings: SettingsStore
     @ObservedObject var exitIP: ExitIPStore
-    let banner: AnyView
+    /// OTA `home.top` components and the banner ad.
+    let top: AnyView
+    /// OTA `home.bottom` components.
+    let bottom: AnyView
 
     @State private var logLines: [TunnelLogLine] = []
 
@@ -344,7 +353,7 @@ struct TerminalHomeView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 14) {
-                banner
+                top
                 VStack(alignment: .leading, spacing: 6) {
                     statusLine
                     proxyLine
@@ -369,7 +378,7 @@ struct TerminalHomeView: View {
                 )
                 .environment(\.colorScheme, .dark)
                 HomeErrorBanner()
-                DynamicOTAView(placement: "home.bottom")
+                bottom
             }
             .padding()
         }
