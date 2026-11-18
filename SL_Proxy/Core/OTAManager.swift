@@ -38,6 +38,16 @@ enum OTAJSONValue: Codable, Equatable {
         }
     }
 
+    var boolValue: Bool? {
+        if case .bool(let v) = self { return v }
+        return nil
+    }
+
+    var stringValue: String? {
+        if case .string(let v) = self { return v }
+        return nil
+    }
+
     /// Plain Foundation value for JavaScriptCore.
     var foundation: Any {
         switch self {
@@ -167,6 +177,8 @@ struct OTABridge {
     var appState: @Sendable () -> [String: Any]
     var flags: OTAFlagStore
     var log: @Sendable (String) -> Void
+    /// `setSingBoxOverrides(jsonString)`: stores the config override; false when it is not a JSON object.
+    var setSingBoxOverrides: @Sendable (String) -> Bool = { _ in false }
 
     /// No-op bridge for validation: top-level code may call the functions, nothing happens.
     static let inert = OTABridge(
@@ -310,6 +322,11 @@ final class OTAJSRuntime {
             bridge.flags.set(key, value)
         }
         expose("setFlag", unsafeBitCast(setFlag, to: AnyObject.self))
+
+        let setSingBoxOverrides: @convention(block) (String) -> Bool = { json in
+            bridge.setSingBoxOverrides(String(json.prefix(65_536)))
+        }
+        expose("setSingBoxOverrides", unsafeBitCast(setSingBoxOverrides, to: AnyObject.self))
 
         let log: @convention(block) (String) -> Void = { message in
             bridge.log(String(message.prefix(500)))
@@ -614,10 +631,35 @@ final class OTAManager: ObservableObject {
         _ = OTAFlags.shared.apply(uiJSON: data)
         self.version = version
         self.source = source
+        applyBundleOverrides(decoded.flags?["singbox_overrides"])
         refreshSnapshot()
         refreshModal()
         if await fresh.hasFunction("onLoad") { _ = await call("onLoad") }
         return true
+    }
+
+    /// `flags.singbox_overrides` of the bundle that just became active: an object or a JSON string.
+    /// A bundle without it clears the previous override, so removing the key from `ui.json`
+    /// reverts the config. A running tunnel picks the change up through `applyChanges()`.
+    private func applyBundleOverrides(_ value: OTAJSONValue?) {
+        let text: String
+        switch value {
+        case .string(let json)?:
+            text = json
+        case .object(let object)?:
+            let foundation = object.mapValues(\.foundation)
+            guard JSONSerialization.isValidJSONObject(foundation),
+                  let data = try? JSONSerialization.data(withJSONObject: foundation, options: [.sortedKeys]) else { return }
+            text = String(decoding: data, as: UTF8.self)
+        default:
+            text = ""
+        }
+        let before = OTAOverrides.storedText
+        guard OTAOverrides.store(text) else {
+            lastError = "singbox_overrides is not a JSON object"
+            return
+        }
+        if OTAOverrides.storedText != before { tunnel?.applyChanges() }
     }
 
     // MARK: - Disk and UserDefaults
@@ -766,7 +808,13 @@ final class OTAManager: ObservableObject {
             },
             appState: { box.value },
             flags: store,
-            log: { message in NSLog("[OTA] %@", message) }
+            log: { message in NSLog("[OTA] %@", message) },
+            setSingBoxOverrides: { [weak self] json in
+                let before = OTAOverrides.storedText
+                guard OTAOverrides.store(json) else { return false }
+                if OTAOverrides.storedText != before { Task { @MainActor in self?.tunnel?.applyChanges() } }
+                return true
+            }
         )
     }
 
