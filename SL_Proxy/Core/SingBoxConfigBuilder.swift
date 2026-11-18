@@ -341,7 +341,7 @@ enum SingBoxConfigBuilder {
     /// app pin sockets to an interface or set fwmarks, and a plain socket already follows the
     /// system default route.
     private static func userSpaceDialFields() -> [String: Any] {
-        ["domain_strategy": "prefer_ipv4"]
+        [:]
     }
 
     static func outbound(_ n: ProxyNode, tag: String) -> [String: Any] {
