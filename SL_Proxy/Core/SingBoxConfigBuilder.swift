@@ -205,7 +205,15 @@ enum SingBoxConfigBuilder {
         let localAddress = legacyDNSAddress(s.localDNS, fallback: "local")
 
         var servers: [[String: Any]] = []
-        var remote: [String: Any] = ["tag": "remote", "address": remoteAddress, "detour": proxyTag]
+        // `remote` is dialled over the DIRECT outbound, not through `proxy`. The route's `resolve`
+        // action makes sing-box ask `remote` for a domain while that connection is being routed.
+        // If the DoH / DoT request itself had to go through the `proxy` outbound, dialling that
+        // outbound would trigger a nested lookup of the proxy's own host name inside the same
+        // `remote` exchange, and sing-box aborts it with "DNS query loopback in transport[remote]"
+        // (every Rule / Global connection then dies). The encrypted query still goes to the
+        // resolver the user chose, so sites like ip8.com report that resolver instead of the
+        // SOCKS5 server's upstream DNS; only the hop to the resolver is no longer tunnelled.
+        var remote: [String: Any] = ["tag": "remote", "address": remoteAddress, "detour": directTag]
         var local: [String: Any] = ["tag": "local", "address": localAddress]
         // The system resolver does not dial through an outbound, so `local` gets no detour.
         if localAddress != "local" { local["detour"] = directTag }
