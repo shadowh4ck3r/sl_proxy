@@ -1,0 +1,38 @@
+--- a/SL_Proxy/Core/SingBoxConfigBuilder.swift
++++ b/SL_Proxy/Core/SingBoxConfigBuilder.swift
+@@ -141,7 +141,7 @@
+ 
+         let config: [String: Any] = [
+             "log": ["level": settings.logLevel, "timestamp": true],
+-            "dns": dns(settings),
++            "dns": dns(settings, serverHosts: (allNodes + [node]).map { $0.server }),
+             "inbounds": inbounds,
+             "outbounds": outbounds,
+             "route": routeSection,
+@@ -198,7 +198,7 @@
+         ]
+     }
+ 
+-    private static func dns(_ s: AppSettings) -> [String: Any] {
++    private static func dns(_ s: AppSettings, serverHosts: [String] = []) -> [String: Any] {
+         // Bundled core is sing-box v1.11.x (scripts/build-libbox.sh), so this uses the legacy
+         // `address` schema. Inputs are trimmed and normalised first (see `legacyDNSAddress`).
+         let remoteAddress = legacyDNSAddress(s.remoteDNS, fallback: "https://1.1.1.1/dns-query")
+@@ -218,7 +218,14 @@
+         servers.append(remote)
+         servers.append(local)
+ 
+-        var rules: [[String: Any]] = [["outbound": "any", "server": "local"]]
++        // Resolve the upstream proxy host name with the iOS system resolver (not UDP 1.1.1.1 / remote).
++        servers.append(["tag": "system", "address": "local"])
++        let hosts = Array(Set(serverHosts
++            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
++            .filter { !$0.isEmpty && IPv4Address($0) == nil && IPv6Address($0) == nil })).sorted()
++        var rules: [[String: Any]] = []
++        if !hosts.isEmpty { rules.append(["domain": hosts, "server": "system"]) }
++        rules.append(["outbound": "any", "server": "system"])
+         if s.blockAds {
+             servers.append(["tag": "block", "address": "rcode://success"])
+             rules.append(["rule_set": ["geosite-category-ads-all"], "server": "block"])
+ls fix-dns-server-resolve.patch
+patch -p1 --dry-run < fix-dns-server-resolve.patch

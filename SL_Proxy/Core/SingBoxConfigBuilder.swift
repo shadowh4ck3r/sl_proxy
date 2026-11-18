@@ -210,22 +210,47 @@ enum SingBoxConfigBuilder {
         // The system resolver does not dial through an outbound, so `local` gets no detour.
         if localAddress != "local" { local["detour"] = directTag }
 
-        if !addressNeedsNoResolver(remoteAddress) { remote["address_resolver"] = "local" }
-        if !addressNeedsNoResolver(localAddress) {
-            servers.append(["tag": "bootstrap", "address": "udp://1.1.1.1", "detour": directTag])
-            local["address_resolver"] = "bootstrap"
+        // Names sing-box must resolve BEFORE it can dial anything (the upstream proxy host name,
+        // a DoH / DoT host name) need a resolver that never depends on the proxy being up.
+        //
+        // The iOS system resolver is fine for that, UNLESS "System Encrypted DNS" is on: the system
+        // DoH profile then sends every lookup to the DoH server over TCP 443, and with the cellular
+        // profile that connection is carried into our own mixed-in listener and out through the
+        // proxy outbound, which cannot dial until ITS host name resolves. Deadlock: the dial waits
+        // for the system resolver, the system resolver waits for the dial, and the lookup ends in
+        // "lookup <proxy host>: i/o timeout". Direct mode never dials the proxy outbound, which is
+        // why only Rule / Global broke. So while that toggle is on, resolve those names with plain
+        // UDP over the direct outbound instead (the user's Local DNS, or 1.1.1.1 when Local DNS is
+        // "System").
+        let systemDNSInUse = UserDefaults.standard.bool(forKey: "systemEncryptedDNS")
+        let dialResolver: String
+        if !systemDNSInUse {
+            dialResolver = "system"
+        } else if localAddress == "local" {
+            dialResolver = "bootstrap"
+        } else {
+            dialResolver = "local"
         }
+
+        if !addressNeedsNoResolver(remoteAddress) {
+            remote["address_resolver"] = dialResolver == "system" ? "local" : dialResolver
+        }
+        if !addressNeedsNoResolver(localAddress) || dialResolver == "bootstrap" {
+            servers.append(["tag": "bootstrap", "address": "udp://1.1.1.1", "detour": directTag])
+        }
+        if !addressNeedsNoResolver(localAddress) { local["address_resolver"] = "bootstrap" }
         servers.append(remote)
         servers.append(local)
 
-        // Resolve the upstream proxy host name with the iOS system resolver (not UDP 1.1.1.1 / remote).
-        servers.append(["tag": "system", "address": "local"])
+        if dialResolver == "system" {
+            servers.append(["tag": "system", "address": "local"])
+        }
         let hosts = Array(Set(serverHosts
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
             .filter { !$0.isEmpty && IPv4Address($0) == nil && IPv6Address($0) == nil })).sorted()
         var rules: [[String: Any]] = []
-        if !hosts.isEmpty { rules.append(["domain": hosts, "server": "system"]) }
-        rules.append(["outbound": "any", "server": "system"])
+        if !hosts.isEmpty { rules.append(["domain": hosts, "server": dialResolver]) }
+        rules.append(["outbound": "any", "server": dialResolver])
         if s.blockAds {
             servers.append(["tag": "block", "address": "rcode://success"])
             rules.append(["rule_set": ["geosite-category-ads-all"], "server": "block"])
@@ -254,7 +279,8 @@ enum SingBoxConfigBuilder {
         // upstream server and ITS resolver answers (ip8.com then shows the server's DNS).
         // Direct mode keeps the local resolver and skips this.
         if s.routingMode != .direct {
-            rules.append(["action": "resolve", "server": "remote", "strategy": "prefer_ipv4"])
+            rules.append(["action": "resolve", "server": "remote",
+                          "strategy": s.ipv6Enabled ? "prefer_ipv4" : "ipv4_only"])
         }
         if s.bypassLAN { rules.append(["ip_is_private": true, "outbound": directTag]) }
 

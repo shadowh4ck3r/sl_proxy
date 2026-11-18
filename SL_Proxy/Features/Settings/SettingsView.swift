@@ -226,7 +226,7 @@ private struct DNSSettingsView: View {
                 } header: {
                     Text("System DNS")
                 } footer: {
-                    Text("Mirrors your Remote DNS into iOS as a DoH / DoT profile, so the whole system resolves over encrypted DNS without a VPN icon. Needs a DoH (https://) or DoT (tls://) Remote DNS.")
+                    Text("Mirrors your Remote DNS into iOS as a DoH / DoT profile, so the whole system resolves over encrypted DNS without a VPN icon. Needs a DoH (https://) or DoT (tls://) Remote DNS. Reconnect after changing it so the proxy picks up the new setting.")
                         .font(.caption2)
                 }
             }
