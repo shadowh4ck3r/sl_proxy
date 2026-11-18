@@ -53,6 +53,7 @@ final class TunnelController: ObservableObject {
     let clients = ConnectedClientsMonitor()
     let engine = LocalProxyEngine()
     let keepAlive = BackgroundKeepAlive()
+    private let thermal = ThermalMonitor()
     /// Fires a notification when the app is killed while it holds the loopback port.
     private let watchdog = EngineWatchdog()
     let pac = PACServer()
@@ -155,6 +156,9 @@ final class TunnelController: ObservableObject {
 
         // A fresh launch: clear any "stopped" alert left over from the previous run.
         watchdog.stop()
+
+        let thermalEngine = engine
+        thermal.start { line in thermalEngine.record(line) }
 
         keepAlive.$isActive
             .receive(on: RunLoop.main)

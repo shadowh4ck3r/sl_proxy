@@ -16,44 +16,29 @@ struct HomeView: View {
     @State private var showNodePicker = false
     @StateObject private var exitIP = ExitIPStore()
     @StateObject private var banners = BannerStore()
+    @ObservedObject private var ota = OTAFlags.shared
+    @AppStorage(HomeLayoutStyle.storageKey) private var storedLayout = ""
 
     private static let layoutAnimation = Animation.spring(response: 0.4, dampingFraction: 0.8)
 
     private var style: NavigationStyle { settings.value.navigationStyle }
     private var buttonSize: ConnectionButtonSize { settings.value.connectionButtonSize }
     private var isButtonFixed: Bool { settings.value.fixedButtonPosition }
+    private var layout: HomeLayoutStyle {
+        HomeLayoutStyle.resolve(stored: storedLayout, otaDefault: ota.defaultHomeLayout)
+    }
 
     var body: some View {
         NavigationStack {
             ZStack {
                 Brand.background
-                ScrollView {
-                    VStack(spacing: 18) {
-                        DynamicOTAView(placement: "home.top")
-                        if !banners.banners.isEmpty {
-                            BannerAdCard(banners: banners.banners, style: style)
-                        }
-                        if isButtonFixed {
-                            statusPill
-                        } else {
-                            connectCard
-                        }
-                        LocalProxyCard(endpoint: tunnel.proxyEndpoint,
-                                       isRunning: tunnel.isConnected,
-                                       passthroughActive: tunnel.passthroughActive) {
-                            UIPasteboard.general.string = tunnel.proxyEndpoint
-                            nodes.toast = "Proxy address copied"
-                        }
-                        CellularCard(verifier: tunnel.verifier, budget: tunnel.budget, style: style)
-                        nodeCard
-                        modeCard
-                        TrafficCard(traffic: tunnel.traffic)
-                        if let error = tunnel.lastError {
-                            errorCard(error)
-                        }
-                        DynamicOTAView(placement: "home.bottom")
+                Group {
+                    switch layout {
+                    case .classic: classicContent
+                    case .tactical: TacticalHomeView(showNodePicker: $showNodePicker, banner: bannerSection)
+                    case .telemetry: TelemetryHomeView(showNodePicker: $showNodePicker, banner: bannerSection)
+                    case .terminal: TerminalHomeView(exitIP: exitIP, banner: bannerSection)
                     }
-                    .padding()
                 }
             }
             .animation(Self.layoutAnimation, value: buttonSize)
@@ -65,7 +50,6 @@ struct HomeView: View {
             .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showNodePicker) { NodePickerSheet() }
             .task { await banners.refresh() }
-            // Flag and masked exit IP of the running connection; cleared on disconnect.
             .task(id: "\(tunnel.isConnected)-\(nodes.activeNodeID?.uuidString ?? "")") {
                 if tunnel.isConnected {
                     try? await Task.sleep(for: .seconds(2))
@@ -74,6 +58,38 @@ struct HomeView: View {
                     exitIP.clear()
                 }
             }
+        }
+    }
+
+    private var bannerSection: AnyView {
+        AnyView(VStack(spacing: 10) {
+            DynamicOTAView(placement: "home.top")
+            if !banners.banners.isEmpty { BannerAdCard(banners: banners.banners, style: style) }
+        })
+    }
+
+    private var classicContent: some View {
+        ScrollView {
+            VStack(spacing: 18) {
+                DynamicOTAView(placement: "home.top")
+                if !banners.banners.isEmpty {
+                    BannerAdCard(banners: banners.banners, style: style)
+                }
+                if isButtonFixed { statusPill } else { connectCard }
+                LocalProxyCard(endpoint: tunnel.proxyEndpoint,
+                               isRunning: tunnel.isConnected,
+                               passthroughActive: tunnel.passthroughActive) {
+                    UIPasteboard.general.string = tunnel.proxyEndpoint
+                    nodes.toast = "Proxy address copied"
+                }
+                CellularCard(verifier: tunnel.verifier, budget: tunnel.budget, style: style)
+                nodeCard
+                modeCard
+                if !ota.hidesHomeChart { TrafficCard(traffic: tunnel.traffic) }
+                if let error = tunnel.lastError { errorCard(error) }
+                DynamicOTAView(placement: "home.bottom")
+            }
+            .padding()
         }
     }
 
@@ -100,7 +116,7 @@ struct HomeView: View {
             Circle()
                 .fill(tunnel.isConnected ? Color.green : Color.gray)
                 .frame(width: 8, height: 8)
-            Text(tunnel.statusText)
+            Text(LocalizedStringKey(tunnel.statusText))
                 .font(.footnote.weight(.semibold))
             if let since = tunnel.connectedSince {
                 Text(since, style: .timer)
@@ -130,7 +146,7 @@ struct HomeView: View {
                     .padding(.top, 6)
             }
 
-            Text(tunnel.statusText)
+            Text(LocalizedStringKey(tunnel.statusText))
                 .font(.title3.weight(.semibold))
 
             if tunnel.isConnected, let info = exitIP.info {
@@ -204,7 +220,7 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: 10) {
             Picker("Routing mode", selection: $settings.value.routingMode) {
                 ForEach(RoutingMode.allCases) { mode in
-                    Text(mode.title).tag(mode)
+                    Text(LocalizedStringKey(mode.title)).tag(mode)
                 }
             }
             .pickerStyle(.segmented)

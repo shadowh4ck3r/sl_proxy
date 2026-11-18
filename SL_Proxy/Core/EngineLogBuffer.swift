@@ -14,6 +14,14 @@ final class EngineLogBuffer {
     private let capacity = 600
     private let replayCount = 40
     private var handle: FileHandle?
+    private let logURL: URL
+    private var pending = ""
+    private var lastFlush = Date()
+    private var fileBytes: UInt64 = 0
+    private static let flushBytes = 4_096
+    private static let flushInterval: TimeInterval = 2
+    /// `engine.log` is cut back to its tail past this size; it used to grow for the whole run.
+    private static let maxFileBytes: UInt64 = 512 * 1024
 
     private init() {
         let fm = FileManager.default
@@ -21,22 +29,36 @@ final class EngineLogBuffer {
         let directory = root.appendingPathComponent("SL_Proxy", isDirectory: true)
         try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("engine.log", isDirectory: false)
+        logURL = url
 
         replayPreviousRun(from: url)
         if !fm.fileExists(atPath: url.path) {
             fm.createFile(atPath: url.path, contents: nil)
         }
         handle = try? FileHandle(forWritingTo: url)
-        _ = try? handle?.seekToEnd()
+        fileBytes = (try? handle?.seekToEnd()) ?? 0
     }
 
     func append(_ message: String) {
         lock.lock()
         defer { lock.unlock() }
         store(message)
-        if let data = "\(Self.formatter.string(from: Date())) \(message)\n".data(using: .utf8) {
-            try? handle?.write(contentsOf: data)
+        let now = Date()
+        pending += "\(Self.formatter.string(from: now)) \(message)\n"
+        // Warnings and errors reach the file at once so a crash keeps them; everything else is
+        // written in batches instead of one write syscall per line.
+        let lowered = message.lowercased()
+        let urgent = lowered.contains("error") || lowered.contains("fatal") || lowered.contains("warn")
+        if urgent || pending.utf8.count >= Self.flushBytes || now.timeIntervalSince(lastFlush) >= Self.flushInterval {
+            flushLocked(at: now)
         }
+    }
+
+    /// Writes any batched lines now (call when the app resigns active or the engine stops).
+    func flush() {
+        lock.lock()
+        defer { lock.unlock() }
+        flushLocked(at: Date())
     }
 
     /// Lines with an index of `index` or later, plus the index the caller should ask for next.
@@ -60,6 +82,34 @@ final class EngineLogBuffer {
     }
 
     // MARK: - Private
+
+    /// Caller holds `lock`.
+    private func flushLocked(at now: Date) {
+        lastFlush = now
+        guard !pending.isEmpty, let data = pending.data(using: .utf8) else { return }
+        pending = ""
+        try? handle?.write(contentsOf: data)
+        fileBytes += UInt64(data.count)
+        if fileBytes > Self.maxFileBytes { trimFileLocked() }
+    }
+
+    /// Keeps only the last `replayCount` lines of the file and reopens it for appending.
+    private func trimFileLocked() {
+        try? handle?.close()
+        handle = nil
+        let url = logURL
+        if let data = try? Data(contentsOf: url) {
+            let text = String(decoding: data, as: UTF8.self)
+            let kept = text.split(separator: "\n", omittingEmptySubsequences: true).suffix(replayCount * 5)
+            let body = kept.joined(separator: "\n") + "\n"
+            try? body.data(using: .utf8)?.write(to: url, options: .atomic)
+            fileBytes = UInt64(body.utf8.count)
+        } else {
+            fileBytes = 0
+        }
+        handle = try? FileHandle(forWritingTo: url)
+        _ = try? handle?.seekToEnd()
+    }
 
     private func store(_ message: String) {
         lines.append(TunnelLogLine(id: nextIndex, date: Date(), message: message))

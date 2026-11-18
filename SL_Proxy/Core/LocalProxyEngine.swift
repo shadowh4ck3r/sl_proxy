@@ -150,6 +150,7 @@ final class LocalProxyEngine {
         if isRunning {
             record("sing-box core stopped (\(reason))")
         }
+        logs.flush()
         setStartedAt(nil)
     }
 

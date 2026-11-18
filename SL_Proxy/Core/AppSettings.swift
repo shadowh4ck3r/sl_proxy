@@ -379,7 +379,7 @@ struct AppSettings: Codable, Equatable {
     var sniffing = true
 
     var autoConnectOnLaunch = false
-    var logLevel = "info"
+    var logLevel = "warn"
     /// User-space build: keep the in-app proxy alive when the app is minimized (silent audio
     /// session + background task, see BackgroundKeepAlive).
     var keepAliveInBackground = true

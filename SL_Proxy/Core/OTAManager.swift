@@ -49,6 +49,11 @@ enum OTAJSONValue: Codable, Equatable {
         case .object(let v): return v.mapValues(\.foundation)
         }
     }
+
+    var boolValue: Bool? {
+        if case .bool(let value) = self { return value }
+        return nil
+    }
 }
 
 /// What a tap does. `js` calls a function of `logic.js`; the others are handled natively.
@@ -91,7 +96,7 @@ struct OTAComponent: Codable, Identifiable, Equatable {
 struct OTAUI: Codable, Equatable {
     var schema: Int
     /// Default values for feature flags; the user's own toggles win.
-    var flags: [String: Bool]?
+    var flags: [String: OTAJSONValue]?
     var components: [OTAComponent]
 }
 
@@ -606,6 +611,7 @@ final class OTAManager: ObservableObject {
         runtimeReady = true
         logicText = logic
         self.ui = decoded
+        _ = OTAFlags.shared.apply(uiJSON: data)
         self.version = version
         self.source = source
         refreshSnapshot()
@@ -694,7 +700,7 @@ final class OTAManager: ObservableObject {
     }
 
     func flag(_ name: String, default fallback: Bool = false) -> Bool {
-        flagStore.get(name) ?? ui?.flags?[name] ?? fallback
+        flagStore.get(name) ?? ui?.flags?[name]?.boolValue ?? fallback
     }
 
     func setFlag(_ name: String, _ value: Bool) {

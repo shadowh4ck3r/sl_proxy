@@ -8,6 +8,7 @@ struct SLProxyApp: App {
     @StateObject private var backup: ICloudBackupStore
     @StateObject private var account: SLAccountStore
     @StateObject private var market: ProxyMarketStore
+    @StateObject private var language = LanguageStore()
     @State private var showSplash = true
 
     init() {
@@ -34,6 +35,9 @@ struct SLProxyApp: App {
                 .environmentObject(backup)
                 .environmentObject(account)
                 .environmentObject(market)
+                .environmentObject(language)
+                .environment(\.locale, language.locale)
+                .environment(\.layoutDirection, language.layoutDirection)
                 .overlay {
                     if showSplash {
                         SplashView()

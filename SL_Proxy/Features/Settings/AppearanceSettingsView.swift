@@ -11,11 +11,29 @@ import SwiftUI
 /// sing-box config on settings changes, finds it unchanged and leaves the running core alone.
 struct AppearanceSettingsView: View {
     @EnvironmentObject private var settings: SettingsStore
+    @ObservedObject private var ota = OTAFlags.shared
+    @AppStorage(HomeLayoutStyle.storageKey) private var storedLayout = ""
+
+    private var layoutSelection: Binding<HomeLayoutStyle> {
+        Binding(
+            get: { HomeLayoutStyle.resolve(stored: storedLayout, otaDefault: ota.defaultHomeLayout) },
+            set: { storedLayout = $0.rawValue }
+        )
+    }
 
     var body: some View {
         ZStack {
             Brand.background
             Form {
+                Section {
+                    Picker("Home Screen Style", selection: layoutSelection) {
+                        ForEach(HomeLayoutStyle.allCases) { layout in
+                            Text(LocalizedStringKey(layout.title)).tag(layout)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+
                 Section {
                     Picker("Theme", selection: $settings.value.colorScheme) {
                         ForEach(AppColorScheme.allCases) { scheme in
@@ -71,6 +89,7 @@ struct AppearanceSettingsView: View {
 
                 Section {
                     Button(role: .destructive) {
+                        storedLayout = HomeLayoutStyle.classic.rawValue
                         resetAppearance()
                     } label: {
                         Text("Reset Appearance Settings")

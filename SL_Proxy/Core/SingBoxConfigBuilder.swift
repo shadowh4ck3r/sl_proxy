@@ -150,8 +150,9 @@ enum SingBoxConfigBuilder {
                 "cache_file": ["enabled": true, "path": "cache.db"],
             ],
         ]
+        let finalConfig = OTAOverrides.apply(to: config)
         let data = try JSONSerialization.data(
-            withJSONObject: config,
+            withJSONObject: finalConfig,
             options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         )
         return String(decoding: data, as: UTF8.self)
@@ -239,6 +240,9 @@ enum SingBoxConfigBuilder {
 
         if s.sniffing { rules.append(["action": "sniff"]) }
         rules.append(["protocol": "dns", "action": "hijack-dns"])
+        if s.routingMode != .direct {
+            rules.append(["action": "resolve", "server": "remote", "strategy": "prefer_ipv4"])
+        }
         if s.bypassLAN { rules.append(["ip_is_private": true, "outbound": directTag]) }
 
         if s.blockAds {

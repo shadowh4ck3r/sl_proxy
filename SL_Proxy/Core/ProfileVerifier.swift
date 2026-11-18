@@ -43,7 +43,10 @@ final class ProfileVerifier: ObservableObject {
 
     /// How long a verification stays green without new traffic.
     static let freshness: TimeInterval = 30
-    private static let interval: Duration = .seconds(2)
+    /// Poll period. 2 s decoded the whole `/connections` table (thousands of entries once the
+    /// cellular profile sends every app through the proxy) 30 times a minute. `freshness` is 30 s,
+    /// so 5 s still keeps the badge accurate. Stretched further when the phone runs hot.
+    private static let interval: Duration = .seconds(5)
 
     private static let connectionsRequest: URLRequest? = {
         guard let url = URL(string: "http://\(AppGroup.clashAPIAddress)/connections") else { return nil }
@@ -108,7 +111,7 @@ final class ProfileVerifier: ObservableObject {
         loopbackConnections = 0
     }
 
-    /// One immediate listener probe + Clash API poll outside the two-second loop. No-op while the
+    /// One immediate listener probe + Clash API poll outside the poll loop. No-op while the
     /// engine is stopped or a refresh is already running.
     func refresh() async {
         guard task != nil, !isRefreshing else { return }
@@ -123,7 +126,7 @@ final class ProfileVerifier: ObservableObject {
         while !Task.isCancelled {
             await poll()
             if Task.isCancelled { return }
-            try? await Task.sleep(for: Self.interval)
+            try? await Task.sleep(for: Self.interval * ThermalGuard.pollScale)
         }
     }
 

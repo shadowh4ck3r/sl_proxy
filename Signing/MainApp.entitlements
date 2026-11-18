@@ -13,6 +13,8 @@
     <string>SLPROXY000</string>
     <key>com.apple.developer.ubiquity-kvstore-identifier</key>
     <string>SLPROXY000.com.slproxy.userspace</string>
+    <key>com.apple.developer.networking.networkextension</key>
+    <array><string>dns-settings</string></array>
     <key>get-task-allow</key>
     <false/>
 </dict>

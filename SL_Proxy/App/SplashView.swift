@@ -7,17 +7,18 @@ import SwiftUI
 struct SplashView: View {
     var body: some View {
         ZStack {
-            Color(.systemBackground).ignoresSafeArea()
-            if UIImage(named: "Splash") != nil {
-                Image("Splash")
-                    .resizable()
-                    .scaledToFill()
-                    .ignoresSafeArea()
-            } else {
-                Image("Logo")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 160)
+            Color.white.ignoresSafeArea()
+            GeometryReader { proxy in
+                let width = proxy.size.width * 0.72
+                Group {
+                    if UIImage(named: "Splash") != nil {
+                        Image("Splash").resizable().scaledToFit()
+                    } else {
+                        Image("Logo").resizable().scaledToFit()
+                    }
+                }
+                .frame(width: width)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
     }

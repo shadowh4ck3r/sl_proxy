@@ -5,6 +5,8 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject private var account: SLAccountStore
     @EnvironmentObject private var ota: OTAManager
+    @EnvironmentObject private var tunnel: TunnelController
+    @EnvironmentObject private var language: LanguageStore
     @State private var showAccount = false
 
     var body: some View {
@@ -39,6 +41,23 @@ struct SettingsView: View {
                             }
                         }
                         .foregroundStyle(.primary)
+                    }
+
+                    Section {
+                        TrafficCard(traffic: tunnel.traffic)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                            .listRowBackground(Color.clear)
+                    } header: { Text("Live Traffic") }
+
+                    Section {
+                        Picker(selection: $language.code) {
+                            ForEach(AppLanguage.all) { option in
+                                Text(option.nativeName).tag(option.code)
+                            }
+                        } label: {
+                            SettingsRow(title: "Language", systemImage: "character.bubble")
+                        }
+                        .pickerStyle(.menu)
                     }
 
                     Section {
@@ -90,7 +109,7 @@ struct SettingsRow: View {
                 .foregroundStyle(Color.white)
                 .frame(width: 28, height: 28)
                 .background(Brand.gradient, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-            Text(title)
+            Text(LocalizedStringKey(title))
         }
     }
 }
@@ -172,6 +191,8 @@ private struct ProxyEngineSettingsView: View {
 
 private struct DNSSettingsView: View {
     @EnvironmentObject private var settings: SettingsStore
+    @StateObject private var systemDNS = SystemDNSManager()
+    @AppStorage("systemEncryptedDNS") private var systemDNSOn = false
 
     var body: some View {
         ZStack {
@@ -184,11 +205,34 @@ private struct DNSSettingsView: View {
                     Text("Remote DNS resolves proxied traffic; local DNS resolves the proxy server and bypassed traffic.")
                         .font(.caption2)
                 }
+
+                Section {
+                    Toggle("System Encrypted DNS (No VPN Icon)", isOn: $systemDNSOn)
+                        .disabled(systemDNS.isBusy)
+                    if systemDNSOn, systemDNS.isEnabled == false {
+                        Text("Saved. Turn it on in iOS Settings > General > VPN & Device Management > DNS.")
+                            .font(.footnote)
+                    }
+                    if let message = systemDNS.message {
+                        Text(message).font(.footnote).foregroundStyle(.secondary)
+                    }
+                } header: { Text("System DNS") }
             }
             .scrollContentBackground(.hidden)
         }
         .navigationTitle("DNS Settings")
         .navigationBarTitleDisplayMode(.inline)
+        .task { await systemDNS.refresh() }
+        .onChange(of: systemDNSOn) { enabled in
+            Task {
+                if enabled { await systemDNS.apply(remoteDNS: settings.value.remoteDNS) }
+                else { await systemDNS.remove() }
+            }
+        }
+        .onChange(of: settings.value.remoteDNS) { value in
+            guard systemDNSOn else { return }
+            Task { await systemDNS.apply(remoteDNS: value) }
+        }
     }
 }
 

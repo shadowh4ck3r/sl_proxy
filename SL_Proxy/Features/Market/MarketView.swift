@@ -29,7 +29,7 @@ struct MarketView: View {
                 VStack(spacing: 12) {
                     header
                     Picker("View", selection: $segment) {
-                        ForEach(Segment.allCases) { Text($0.rawValue).tag($0) }
+                        ForEach(Segment.allCases) { Text(LocalizedStringKey($0.rawValue)).tag($0) }
                     }
                     .pickerStyle(.segmented)
                     .padding(.horizontal)

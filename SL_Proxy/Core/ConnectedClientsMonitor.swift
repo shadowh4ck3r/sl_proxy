@@ -134,7 +134,7 @@ final class ConnectedClientsMonitor: ObservableObject {
                 if Task.isCancelled { return }
                 lastError = error.localizedDescription
             }
-            try? await Task.sleep(for: Self.interval)
+            try? await Task.sleep(for: Self.interval * ThermalGuard.pollScale)
         }
     }
 
